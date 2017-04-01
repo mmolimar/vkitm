@@ -1,0 +1,26 @@
+group 'com.github.mmolimar.kafka'
+
+apply plugin: 'scala'
+apply plugin: 'idea'
+apply plugin: 'eclipse'
+
+ext {
+    scalaVersion = '2.11.8'
+    scalaBaseVersion = scalaVersion.substring(0, scalaVersion.lastIndexOf("."))
+    scalaTestVersion = '3.0.0'
+
+    kafkaVersion = '0.10.0.0'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile group: 'org.scala-lang', name: 'scala-library', version: scalaVersion
+    compile group: 'org.apache.kafka', name: "kafka_$scalaBaseVersion", version: kafkaVersion
+    compile group: 'org.apache.kafka', name: 'kafka-clients', version: kafkaVersion
+
+    testCompile group: 'org.scalatest', name: "scalatest_$scalaBaseVersion", version: scalaTestVersion
+}
+

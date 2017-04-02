@@ -9,7 +9,7 @@ ext {
     scalaBaseVersion = scalaVersion.substring(0, scalaVersion.lastIndexOf("."))
     scalaTestVersion = '3.0.0'
 
-    kafkaVersion = '0.10.0.0'
+    kafkaVersion = '0.10.1.0'
 }
 
 repositories {

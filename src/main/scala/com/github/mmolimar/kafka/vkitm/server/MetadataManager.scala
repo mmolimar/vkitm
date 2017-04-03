@@ -54,7 +54,7 @@ class MetadataManager(vkId: Int,
     }
     metadataCache.setActualAliveBrokers(aliveBrokers)
 
-    //set virutal alive brokers
+    //set virtual alive brokers
     metadataCache.setVirtualAliveBrokers(virtualBrokers.map(broker => (broker.id, broker)))
   }
 

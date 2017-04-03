@@ -3,6 +3,7 @@ package com.github.mmolimar.kafka.vkitm.server
 import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicBoolean
 
+import kafka.cluster.Broker
 import kafka.common.KafkaException
 import kafka.network.SocketServer
 import kafka.server._
@@ -11,8 +12,6 @@ import org.apache.kafka.common.metrics.{JmxReporter, Metrics, _}
 import org.apache.kafka.common.protocol.SecurityProtocol
 import org.apache.kafka.common.security.JaasUtils
 import org.apache.kafka.common.utils.AppInfoParser
-
-import scala.collection.Map
 
 object VKitMServer {
 
@@ -40,9 +39,10 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
 
   var apis: VKitMApis = null
   var socketServer: SocketServer = null
+  var metadataCache: FakedMetadataCache = null
   var requestHandlerPool: VKitMRequestHandlerPool = null
-  var dynamicConfigHandlers: Map[String, ConfigHandler] = null
-  var dynamicConfigManager: DynamicConfigManager = null
+  var fakedMetadataManager: MetadataManager = null
+
   val vkitmScheduler = new KafkaScheduler(config.serverConfig.backgroundThreads, "vkitm-scheduler-")
 
   var zkUtils: ZkUtils = null
@@ -75,20 +75,20 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
       config.serverConfig.brokerId = VKitMServer.DEFAULT_VKITM_BROKER_ID
       this.logIdent = "[VKitM Server], "
 
+      metadataCache = new FakedMetadataCache(config.serverConfig.brokerId)
+
       socketServer = new SocketServer(config.serverConfig, metrics, vkitmMetricsTime)
       socketServer.startup()
 
-      /* start processing requests */
-      apis = new VKitMApis(socketServer.requestChannel, zkUtils, config, metrics, clusterId)
+      val virtualBroker = new Broker(VKitMServer.DEFAULT_VKITM_BROKER_ID, config.serverConfig.advertisedListeners, config.serverConfig.rack)
+      fakedMetadataManager = new MetadataManager(config.serverConfig.brokerId, zkUtils, Seq(virtualBroker), metadataCache)
+      fakedMetadataManager.startup()
+
+      apis = new VKitMApis(socketServer.requestChannel, zkUtils, config, metadataCache, metrics, clusterId)
 
       requestHandlerPool = new VKitMRequestHandlerPool(config.serverConfig.brokerId,
         socketServer.requestChannel, apis, config.serverConfig.numIoThreads)
 
-
-      //TODO listen for changes in ZK
-      dynamicConfigHandlers = Map[String, ConfigHandler]()
-      dynamicConfigManager = new DynamicConfigManager(zkUtils, dynamicConfigHandlers)
-      dynamicConfigManager.startup()
 
       shutdownLatch = new CountDownLatch(1)
       startupComplete.set(true)
@@ -142,6 +142,8 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
         CoreUtils.swallow(vkitmScheduler.shutdown())
         if (apis != null)
           CoreUtils.swallow(apis.close())
+        if (fakedMetadataManager != null)
+          CoreUtils.swallow(fakedMetadataManager.shutdown())
         if (zkUtils != null)
           CoreUtils.swallow(zkUtils.close())
         if (metrics != null)

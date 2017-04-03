@@ -5,12 +5,16 @@ import kafka.network.RequestChannel.Response
 import kafka.network._
 import kafka.utils.{Logging, SystemTime, ZkUtils}
 import org.apache.kafka.common.metrics.Metrics
-import org.apache.kafka.common.protocol.{ApiKeys, Errors}
+import org.apache.kafka.common.protocol.{ApiKeys, Errors, SecurityProtocol}
 import org.apache.kafka.common.requests._
+
+import scala.collection.JavaConverters._
+import scala.collection.{Seq, _}
 
 class VKitMApis(val requestChannel: RequestChannel,
                 val zkUtils: ZkUtils,
                 val config: VKitMConfig,
+                val metadataCache: FakedMetadataCache,
                 val metrics: Metrics,
                 val clusterId: String) extends Logging {
 
@@ -56,11 +60,42 @@ class VKitMApis(val requestChannel: RequestChannel,
     produceRequest.clearPartitionRecords()
   }
 
-
   def handleTopicMetadataRequest(request: RequestChannel.Request) {
     val metadataRequest = request.body.asInstanceOf[MetadataRequest]
+    val requestVersion = request.header.apiVersion()
 
-    //TODO
+    val topics =
+      if (requestVersion == 0) {
+        if (metadataRequest.topics() == null || metadataRequest.topics().isEmpty)
+          metadataCache.getAllTopics()
+        else
+          metadataRequest.topics.asScala.toSet
+      } else {
+        if (metadataRequest.isAllTopics)
+          metadataCache.getAllTopics()
+        else
+          metadataRequest.topics.asScala.toSet
+      }
+
+    val errorUnavailableEndpoints = requestVersion == 0
+    val topicMetadata = getTopicMetadata(topics, request.securityProtocol, errorUnavailableEndpoints)
+
+    val brokers = metadataCache.getAliveBrokers
+
+    trace("Sending topic metadata %s and brokers %s for correlation id %d to client %s".format(topicMetadata.mkString(","),
+      brokers.mkString(","), request.header.correlationId, request.header.clientId))
+
+    val responseHeader = new ResponseHeader(request.header.correlationId)
+
+    val responseBody = new MetadataResponse(
+      brokers.map(_.getNode(request.securityProtocol)).asJava,
+      clusterId,
+      metadataCache.getControllerId.getOrElse(MetadataResponse.NO_CONTROLLER_ID),
+      topicMetadata.asJava,
+      requestVersion
+    )
+    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
+
   }
 
   def handleUpdateMetadataRequest(request: RequestChannel.Request) {
@@ -72,6 +107,22 @@ class VKitMApis(val requestChannel: RequestChannel,
 
     val responseHeader = new ResponseHeader(correlationId)
     requestChannel.sendResponse(new Response(request, new ResponseSend(request.connectionId, responseHeader, updateMetadataResponse)))
+
+  }
+
+  private def getTopicMetadata(topics: Set[String], securityProtocol: SecurityProtocol, errorUnavailableEndpoints: Boolean): Seq[MetadataResponse.TopicMetadata] = {
+    val topicResponses = metadataCache.getTopicMetadata(topics, securityProtocol, errorUnavailableEndpoints)
+    if (topics.isEmpty || topicResponses.size == topics.size) {
+      topicResponses
+    } else {
+      val nonExistentTopics = topics -- topicResponses.map(_.topic).toSet
+      val responsesForNonExistentTopics = nonExistentTopics.map { topic =>
+        //TODO send request to actual brokers
+        new MetadataResponse.TopicMetadata(Errors.UNKNOWN_TOPIC_OR_PARTITION, topic, false,
+          java.util.Collections.emptyList())
+      }
+      topicResponses ++ responsesForNonExistentTopics
+    }
   }
 
   def close() {

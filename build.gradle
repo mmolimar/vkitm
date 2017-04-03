@@ -24,3 +24,17 @@ dependencies {
     testCompile group: 'org.scalatest', name: "scalatest_$scalaBaseVersion", version: scalaTestVersion
 }
 
+jar {
+    from {
+        (configurations.runtime).collect {
+            it.isDirectory() ? it : zipTree(it)
+        }
+    }
+    manifest {
+        attributes(
+                'Main-Class': 'com.github.mmolimar.kafka.vkitm.VKitM',
+                'Class-Path': configurations.runtime.collect { it.getName() }.join(' ')
+        )
+    }
+}
+

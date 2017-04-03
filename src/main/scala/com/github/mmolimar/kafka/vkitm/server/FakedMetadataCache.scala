@@ -43,9 +43,15 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
 
   def getControllerId: Option[Int] = controllerId
 
-  def getAliveBrokers: Seq[Broker] = {
+  def getVirtualAliveBrokers: Seq[Broker] = {
     inReadLock(vkMetadataLock) {
       virtualAliveBrokers.values.toBuffer
+    }
+  }
+
+  def getActualAliveBrokers: Seq[Broker] = {
+    inReadLock(vkMetadataLock) {
+      actualAliveBrokers.values.toBuffer
     }
   }
 

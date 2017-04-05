@@ -54,8 +54,6 @@ class VKitMApis(val requestChannel: RequestChannel,
           val response = request.body.getErrorResponse(request.header.apiVersion, e)
           val respHeader = new ResponseHeader(request.header.correlationId)
 
-          /* If request doesn't have a default error response, we just close the connection.
-             For example, when produce request has acks set to 0 */
           if (response == null)
             requestChannel.closeConnection(request.processor, request)
           else
@@ -63,8 +61,9 @@ class VKitMApis(val requestChannel: RequestChannel,
 
           error("Error when handling request %s".format(request.body), e)
         }
-    } finally
+    } finally {
       request.apiLocalCompleteTimeMs = SystemTime.milliseconds
+    }
   }
 
   def handleProducerRequest(request: RequestChannel.Request) {
@@ -83,14 +82,18 @@ class VKitMApis(val requestChannel: RequestChannel,
     }
 
     val recordMetadata: Seq[RecordMetadata] = records.flatMap { mr =>
-      mr.asScala.map { record =>
+      mr.asScala.map { rm =>
         val key = {
-          if (record.record().key() == null) null
-          else record.record().key().array()
+          rm.record().key() match {
+            case null => null
+            case _ => rm.record().key().array()
+          }
         }
         val value = {
-          if (record.record().value() == null) null
-          else record.record().value().array().slice(record.record().value().arrayOffset(), record.record().value().array().length)
+          rm.record().value() match {
+            case null => null
+            case _ => rm.record().value().array().slice(rm.record().value().arrayOffset(), rm.record().value().array().length)
+          }
         }
         val precord = new ProducerRecord[Array[Byte], Array[Byte]](topic.get, key, value)
         //TODO process in parallel
@@ -153,9 +156,8 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleUpdateMetadataRequest(request: RequestChannel.Request) {
     val correlationId = request.header.correlationId
-    val updateMetadataRequest = request.body.asInstanceOf[UpdateMetadataRequest]
 
-    //TODO
+    //always fine, the metadata is updated when starting the app and by the zkNode change listeners
     val updateMetadataResponse = new UpdateMetadataResponse(Errors.NONE.code)
 
     val responseHeader = new ResponseHeader(correlationId)

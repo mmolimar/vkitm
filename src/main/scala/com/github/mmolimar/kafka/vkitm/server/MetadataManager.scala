@@ -111,7 +111,7 @@ class MetadataManager(vkId: Int,
 
       metadataCache.update(createTopicsByPartitionStateInfo(currentTopics.toSeq))
 
-      info("New topics: [%s], deleted topics: [%s]".format(newTopics, deletedTopics))
+      info("New topics: [%s], deleted topics: [%s]".format(newTopics.mkString(","), deletedTopics.mkString(",")))
     }
   }
 
@@ -143,7 +143,7 @@ class MetadataManager(vkId: Int,
     def handleChildChange(parentPath: String, children: java.util.List[String]) {
       if (!hasStarted.get) return
 
-      var currentBrokers = {
+      val currentBrokers = {
         import JavaConversions._
         (children: Buffer[String]).toSet
       }

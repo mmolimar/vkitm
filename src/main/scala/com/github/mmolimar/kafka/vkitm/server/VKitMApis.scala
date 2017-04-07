@@ -5,14 +5,15 @@ import java.nio.ByteBuffer
 import java.util.Properties
 import java.util.concurrent.{Future => JFuture}
 
+import com.github.mmolimar.kafka.vkitm.utils.Helpers._
 import kafka.common._
+import kafka.message.Message
 import kafka.network.RequestChannel.Response
 import kafka.network._
 import kafka.utils.{Logging, SystemTime, ZkUtils}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.metrics.Metrics
-import org.apache.kafka.common.protocol.types.Struct
 import org.apache.kafka.common.protocol.{ApiKeys, Errors, SecurityProtocol}
 import org.apache.kafka.common.record.MemoryRecords
 import org.apache.kafka.common.requests.ProduceResponse.PartitionResponse
@@ -20,8 +21,10 @@ import org.apache.kafka.common.requests._
 import org.apache.kafka.common.serialization.{ByteArraySerializer, Serializer}
 
 import scala.collection.JavaConverters._
-import scala.collection.{Seq, _}
-import scala.concurrent.{Future => SFuture}
+import scala.collection._
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.{Promise, Future => SFuture}
+import scala.util.{Failure, Success}
 
 class VKitMApis(val requestChannel: RequestChannel,
                 val zkUtils: ZkUtils,
@@ -69,20 +72,28 @@ class VKitMApis(val requestChannel: RequestChannel,
   def handleProducerRequest(request: RequestChannel.Request) {
     val produceRequest = request.body.asInstanceOf[ProduceRequest]
 
-    var records = Seq.empty[MemoryRecords]
-    var topic: Option[String] = None
-    val topicData = produceRequest.toStruct.get("topic_data").asInstanceOf[Array[Object]]
-    for (td <- topicData) {
-      topic.getOrElse(topic = Some(td.asInstanceOf[Struct].getString("topic")))
-      val data = td.asInstanceOf[Struct].get("data").asInstanceOf[Array[Object]]
-      for (d <- data) {
-        val recordSet = d.asInstanceOf[Struct].get("record_set").asInstanceOf[ByteBuffer]
-        records = records :+ MemoryRecords.readableRecords(recordSet)
-      }
-    }
+    def sendRecord(topicPartition: TopicPartition, buffer: ByteBuffer): Seq[SFuture[(TopicPartition, PartitionResponse)]] = {
 
-    val recordMetadata: Seq[RecordMetadata] = records.flatMap { mr =>
-      mr.asScala.map { rm =>
+      def transform(futures: Seq[SFuture[RecordMetadata]]) = {
+        def fromSuccess(rm: RecordMetadata) = {
+          (topicPartition, new PartitionResponse(Errors.NONE.code, rm.offset(), rm.timestamp()))
+        }
+
+        def fromFailure(t: Throwable) = {
+          (topicPartition, new PartitionResponse(Errors.forException(t).code, -1, Message.NoTimestamp))
+        }
+
+        for (f <- futures) yield {
+          val p = Promise[(TopicPartition, PartitionResponse)]()
+          f.onComplete {
+            case Success(x) => p.success(fromSuccess(x))
+            case Failure(t) => p.success(fromFailure(t))
+          }
+          p.future
+        }
+      }
+
+      val futures = MemoryRecords.readableRecords(buffer).asScala.map { rm =>
         val key = {
           rm.record().key() match {
             case null => null
@@ -95,25 +106,33 @@ class VKitMApis(val requestChannel: RequestChannel,
             case _ => rm.record().value().array().slice(rm.record().value().arrayOffset(), rm.record().value().array().length)
           }
         }
-        val precord = new ProducerRecord[Array[Byte], Array[Byte]](topic.get, key, value)
-        //TODO process in parallel
-        kafkaProducer.send(precord).get()
+        val record = new ProducerRecord[Array[Byte], Array[Byte]](topicPartition.topic(), key, value)
+        kafkaProducer.send(record).asScala
+
+      }.toSeq
+
+      transform(futures)
+    }
+
+    val result: Seq[SFuture[(TopicPartition, PartitionResponse)]] = produceRequest.partitionRecords.asScala.map {
+      case (topicPartition, buffer) => sendRecord(topicPartition, buffer)
+    }.flatten.toSeq
+
+    SFuture.sequence(result).onComplete { r =>
+      val responsesByTopicPartition: Map[TopicPartition, PartitionResponse] = r.get.map { item =>
+        item._1 -> item._2
+      }.toMap
+
+      val respBody = request.header.apiVersion match {
+        case 0 => new ProduceResponse(responsesByTopicPartition.asJava)
+        case version@(1 | 2) => new ProduceResponse(responsesByTopicPartition.asJava, 0, version)
+        case version => throw new IllegalArgumentException(s"Version `$version` of ProduceRequest is not handled. Code must be updated.")
       }
+      val respHeader = new ResponseHeader(request.header.correlationId)
+      requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, respHeader, respBody)))
+      produceRequest.clearPartitionRecords()
     }
 
-    val responsesByTopicPartition: mutable.Map[TopicPartition, ProduceResponse.PartitionResponse] = mutable.Map(recordMetadata.map { record =>
-      (new TopicPartition(record.topic(), record.partition()),
-        new PartitionResponse(0, record.offset(), record.timestamp()))
-    }: _*)
-
-    val respHeader = new ResponseHeader(request.header.correlationId)
-    val respBody = request.header.apiVersion match {
-      case 0 => new ProduceResponse(responsesByTopicPartition.asJava)
-      case version@(1 | 2) => new ProduceResponse(responsesByTopicPartition.asJava, 0, version)
-      case version => throw new IllegalArgumentException(s"Version `$version` of ProduceRequest is not handled. Code must be updated.")
-    }
-    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, respHeader, respBody)))
-    produceRequest.clearPartitionRecords()
   }
 
   def handleTopicMetadataRequest(request: RequestChannel.Request) {
@@ -171,10 +190,11 @@ class VKitMApis(val requestChannel: RequestChannel,
       topicResponses
     } else {
       val nonExistentTopics = topics -- topicResponses.map(_.topic).toSet
-      val responsesForNonExistentTopics = nonExistentTopics.map { topic =>
-        //TODO send request to actual brokers
-        new MetadataResponse.TopicMetadata(Errors.UNKNOWN_TOPIC_OR_PARTITION, topic, false,
-          java.util.Collections.emptyList())
+      val responsesForNonExistentTopics = nonExistentTopics.map {
+        topic =>
+          //TODO send request to actual brokers
+          new MetadataResponse.TopicMetadata(Errors.UNKNOWN_TOPIC_OR_PARTITION, topic, false,
+            java.util.Collections.emptyList())
       }
       topicResponses ++ responsesForNonExistentTopics
     }
@@ -197,10 +217,12 @@ class VKitMApis(val requestChannel: RequestChannel,
                                       keySerializer: Serializer[K] = new ByteArraySerializer,
                                       valueSerializer: Serializer[V] = new ByteArraySerializer): KafkaProducer[K, V] = {
 
-    val brokerList: String = metadataCache.getActualAliveBrokers.map { b =>
-      b.endPoints.map { ep =>
-        ep._2.host + ":" + ep._2.port
-      }.mkString(",")
+    val brokerList: String = metadataCache.getActualAliveBrokers.map {
+      b =>
+        b.endPoints.map {
+          ep =>
+            ep._2.host + ":" + ep._2.port
+        }.mkString(",")
     }.mkString(",")
     val producerProps = props.getOrElse(new Properties)
     producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList)
@@ -216,8 +238,9 @@ class VKitMApis(val requestChannel: RequestChannel,
       ProducerConfig.LINGER_MS_CONFIG -> lingerMs.toString
     )
 
-    defaultProps.foreach { case (key, value) =>
-      if (!producerProps.containsKey(key)) producerProps.put(key, value)
+    defaultProps.foreach {
+      case (key, value) =>
+        if (!producerProps.containsKey(key)) producerProps.put(key, value)
     }
 
     new KafkaProducer[K, V](producerProps, keySerializer, valueSerializer)

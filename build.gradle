@@ -10,6 +10,7 @@ ext {
     scalaTestVersion = '3.0.0'
 
     kafkaVersion = '0.10.1.0'
+    guavaVersion = '21.0'
 }
 
 repositories {
@@ -20,6 +21,7 @@ dependencies {
     compile group: 'org.scala-lang', name: 'scala-library', version: scalaVersion
     compile group: 'org.apache.kafka', name: "kafka_$scalaBaseVersion", version: kafkaVersion
     compile group: 'org.apache.kafka', name: 'kafka-clients', version: kafkaVersion
+    compile group: 'com.google.guava', name: 'guava', version: guavaVersion
 
     testCompile group: 'org.scalatest', name: "scalatest_$scalaBaseVersion", version: scalaTestVersion
 }

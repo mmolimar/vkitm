@@ -1,24 +1,22 @@
 package com.github.mmolimar.vkitm.server
 
-import java.io.File
 import java.nio.ByteBuffer
-import java.util.Properties
 import java.util.concurrent.{Future => JFuture}
 
+import com.github.mmolimar.vkitm.common.cache.{Cache, ClientProducerRequest}
 import com.github.mmolimar.vkitm.utils.Helpers._
 import kafka.common._
 import kafka.message.Message
 import kafka.network.RequestChannel.Response
 import kafka.network._
 import kafka.utils.{Logging, SystemTime, ZkUtils}
-import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord, RecordMetadata}
+import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.protocol.{ApiKeys, Errors, SecurityProtocol}
 import org.apache.kafka.common.record.MemoryRecords
 import org.apache.kafka.common.requests.ProduceResponse.PartitionResponse
 import org.apache.kafka.common.requests._
-import org.apache.kafka.common.serialization.{ByteArraySerializer, Serializer}
 
 import scala.collection.JavaConverters._
 import scala.collection._
@@ -33,7 +31,7 @@ class VKitMApis(val requestChannel: RequestChannel,
                 val metrics: Metrics,
                 val clusterId: String) extends Logging {
 
-  private val kafkaProducer = createNewProducer(Option(config.producerConfig))
+  private val producerCache = Cache.forProducers()
 
   this.logIdent = "[VKitMApi-%d] ".format(config.serverConfig.brokerId)
 
@@ -42,7 +40,7 @@ class VKitMApis(val requestChannel: RequestChannel,
       trace("Handling request:%s from connection %s;securityProtocol:%s,principal:%s".
         format(request.requestDesc(true), request.connectionId, request.securityProtocol, request.session.principal))
       ApiKeys.forId(request.requestId) match {
-        //by now, some produce ApiKeys are supported (just for producing messages)
+        //by now, some ApiKeys are supported (just for producing messages)
         case ApiKeys.PRODUCE => handleProducerRequest(request)
         case ApiKeys.METADATA => handleTopicMetadataRequest(request)
         case ApiKeys.UPDATE_METADATA_KEY => handleUpdateMetadataRequest(request)
@@ -107,7 +105,8 @@ class VKitMApis(val requestChannel: RequestChannel,
           }
         }
         val record = new ProducerRecord[Array[Byte], Array[Byte]](topicPartition.topic(), key, value)
-        kafkaProducer.send(record).asScala
+        val entry = ClientProducerRequest(request.header.clientId, getBrokerList, produceRequest.acks)
+        producerCache.getAndMaybePut(entry).send(record).asScala
 
       }.toSeq
 
@@ -204,46 +203,13 @@ class VKitMApis(val requestChannel: RequestChannel,
     info("Shutdown complete.")
   }
 
-  private def createNewProducer[K, V](props: Option[Properties] = None,
-                                      acks: Int = 1,
-                                      maxBlockMs: Long = 60 * 1000L,
-                                      bufferSize: Long = 1024L * 1024L,
-                                      retries: Int = 0,
-                                      lingerMs: Long = 0,
-                                      requestTimeoutMs: Long = 10 * 1024L,
-                                      securityProtocol: SecurityProtocol = SecurityProtocol.PLAINTEXT,
-                                      trustStoreFile: Option[File] = None,
-                                      saslProperties: Option[Properties] = None,
-                                      keySerializer: Serializer[K] = new ByteArraySerializer,
-                                      valueSerializer: Serializer[V] = new ByteArraySerializer): KafkaProducer[K, V] = {
-
-    val brokerList: String = metadataCache.getActualAliveBrokers.map {
-      b =>
-        b.endPoints.map {
-          ep =>
-            ep._2.host + ":" + ep._2.port
-        }.mkString(",")
+  private def getBrokerList() = {
+    metadataCache.getActualAliveBrokers.map {
+      _.endPoints.map {
+        ep =>
+          ep._2.host + ":" + ep._2.port
+      }.mkString(",")
     }.mkString(",")
-    val producerProps = props.getOrElse(new Properties)
-    producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList)
-    producerProps.put(ProducerConfig.ACKS_CONFIG, acks.toString)
-    producerProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, maxBlockMs.toString)
-    producerProps.put(ProducerConfig.BUFFER_MEMORY_CONFIG, bufferSize.toString)
-    producerProps.put(ProducerConfig.RETRIES_CONFIG, retries.toString)
-    producerProps.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, requestTimeoutMs.toString)
-
-    val defaultProps = Map(
-      ProducerConfig.RETRY_BACKOFF_MS_CONFIG -> "100",
-      ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG -> "200",
-      ProducerConfig.LINGER_MS_CONFIG -> lingerMs.toString
-    )
-
-    defaultProps.foreach {
-      case (key, value) =>
-        if (!producerProps.containsKey(key)) producerProps.put(key, value)
-    }
-
-    new KafkaProducer[K, V](producerProps, keySerializer, valueSerializer)
   }
 
 }

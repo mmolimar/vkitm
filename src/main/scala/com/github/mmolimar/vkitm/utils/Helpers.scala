@@ -1,4 +1,4 @@
-package com.github.mmolimar.kafka.vkitm.utils
+package com.github.mmolimar.vkitm.utils
 
 import java.util.concurrent.{CancellationException, TimeUnit, Future => JFuture}
 

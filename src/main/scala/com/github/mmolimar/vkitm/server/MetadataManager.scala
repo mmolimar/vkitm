@@ -1,4 +1,4 @@
-package com.github.mmolimar.kafka.vkitm.server
+package com.github.mmolimar.vkitm.server
 
 import java.util.concurrent.atomic.AtomicBoolean
 

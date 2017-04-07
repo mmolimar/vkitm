@@ -1,11 +1,11 @@
-package com.github.mmolimar.kafka.vkitm.server
+package com.github.mmolimar.vkitm.server
 
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.Properties
 import java.util.concurrent.{Future => JFuture}
 
-import com.github.mmolimar.kafka.vkitm.utils.Helpers._
+import com.github.mmolimar.vkitm.utils.Helpers._
 import kafka.common._
 import kafka.message.Message
 import kafka.network.RequestChannel.Response

@@ -1,8 +1,9 @@
-package com.github.mmolimar.kafka.vkitm
+package com.github.mmolimar.vkitm
 
 import java.util.Properties
 
 import com.github.mmolimar.kafka.vkitm.server.{VKitMServer, VKitMServerStartable}
+import com.github.mmolimar.vkitm.server.{VKitMServer, VKitMServerStartable}
 import joptsimple.OptionParser
 import kafka.utils.{CommandLineUtils, Logging}
 import org.apache.kafka.common.utils.Utils

@@ -1,4 +1,4 @@
-package com.github.mmolimar.kafka.vkitm.server
+package com.github.mmolimar.vkitm.server
 
 import kafka.network._
 import kafka.utils._

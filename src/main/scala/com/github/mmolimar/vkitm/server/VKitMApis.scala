@@ -73,19 +73,21 @@ class VKitMApis(val requestChannel: RequestChannel,
     def sendRecord(topicPartition: TopicPartition, buffer: ByteBuffer): Seq[SFuture[(TopicPartition, PartitionResponse)]] = {
 
       def transform(futures: Seq[SFuture[RecordMetadata]]) = {
-        def fromSuccess(rm: RecordMetadata) = {
-          (topicPartition, new PartitionResponse(Errors.NONE.code, rm.offset(), rm.timestamp()))
-        }
 
-        def fromFailure(t: Throwable) = {
-          (topicPartition, new PartitionResponse(Errors.forException(t).code, -1, Message.NoTimestamp))
+        implicit def makeResponse(p: AnyRef): (TopicPartition, PartitionResponse) = p match {
+          case rm: RecordMetadata => (topicPartition, new PartitionResponse(Errors.NONE.code, rm.offset(), rm.timestamp()))
+          case t: Throwable => {
+            val cause = if (t.getCause != null) t.getCause else t
+            (topicPartition, new PartitionResponse(Errors.forException(cause).code, -1, Message.NoTimestamp))
+          }
         }
 
         for (f <- futures) yield {
           val p = Promise[(TopicPartition, PartitionResponse)]()
           f.onComplete {
-            case Success(x) => p.success(fromSuccess(x))
-            case Failure(t) => p.success(fromFailure(t))
+            //all is mapped as a success response, then make the custom partition response
+            case Success(s) => p.success(s)
+            case Failure(f) => p.success(f)
           }
           p.future
         }

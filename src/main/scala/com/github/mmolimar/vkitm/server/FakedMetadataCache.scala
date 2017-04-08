@@ -7,6 +7,7 @@ import kafka.cluster.Broker
 import kafka.common.{BrokerEndPointNotAvailableException, Topic, TopicAndPartition}
 import kafka.utils.CoreUtils._
 import kafka.utils.Logging
+import org.apache.kafka.clients.ManualMetadataUpdater
 import org.apache.kafka.common.Node
 import org.apache.kafka.common.protocol.{Errors, SecurityProtocol}
 import org.apache.kafka.common.requests.MetadataResponse
@@ -23,6 +24,7 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
   private val actualAliveNodes = mutable.Map[Int, collection.Map[SecurityProtocol, Node]]()
   private val vkMetadataLock = new ReentrantReadWriteLock()
   private val vkBrokersLock = new ReentrantReadWriteLock()
+  private val metadataUpdater = new FakedMetadataUpdater
   //the controller is always the same, the virtual broker
   private var controllerId: Option[Int] = Option(vkId)
 
@@ -43,6 +45,8 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
 
   def getControllerId: Option[Int] = controllerId
 
+  def getMetadataUpdater: FakedMetadataUpdater = metadataUpdater
+
   def getVirtualAliveBrokers: Seq[Broker] = {
     inReadLock(vkMetadataLock) {
       virtualAliveBrokers.values.toBuffer
@@ -52,6 +56,15 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
   def getActualAliveBrokers: Seq[Broker] = {
     inReadLock(vkMetadataLock) {
       actualAliveBrokers.values.toBuffer
+    }
+  }
+
+  def getActualAliveNodes: Seq[Node] = {
+    inReadLock(vkMetadataLock) {
+      actualAliveNodes.flatMap {
+        _._2.map(_._2)
+
+      }.toSeq
     }
   }
 
@@ -75,6 +88,7 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
         actualAliveBrokers.put(b._1, b._2)
         actualAliveNodes.put(b._1, nodeByProtocol(b._2))
       }
+      metadataUpdater.refresh
     }
   }
 
@@ -170,4 +184,18 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
       (endPoint._1, new Node(brokerEndPoint.id, brokerEndPoint.host, brokerEndPoint.port))
     }
   }
+
+  private[server] class FakedMetadataUpdater extends ManualMetadataUpdater {
+
+    protected[server] def refresh(): Unit = {
+      inReadLock(vkMetadataLock) {
+        val nodes = virtualAliveNodes.flatMap {
+          _._2.map(_._2)
+
+        }.toList.asJava
+        super.setNodes(nodes)
+      }
+    }
+  }
+
 }

@@ -51,6 +51,7 @@ class VKitMApis(val requestChannel: RequestChannel,
         case ApiKeys.UPDATE_METADATA_KEY => handleUpdateMetadataRequest(request)
         case ApiKeys.GROUP_COORDINATOR => handleGroupCoordinatorRequest(request)
         case ApiKeys.JOIN_GROUP => handleJoinGroupRequest(request)
+        case ApiKeys.SYNC_GROUP => handleSyncGroupRequest(request)
         case ApiKeys.API_VERSIONS => handleApiVersionsRequest(request)
         case requestId => throw new KafkaException("Unknown api code " + requestId)
       }
@@ -259,6 +260,45 @@ class VKitMApis(val requestChannel: RequestChannel,
         val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
 
         new JoinGroupResponse(response.responseBody())
+
+      } catch {
+        case ioe: IOException => errorResponse(ioe)
+        case ae: ApiException => errorResponse(ae)
+      }
+    }
+
+    trace("Sending join group response %s for correlation id %d to client %s."
+      .format(responseBody, request.header.correlationId, request.header.clientId))
+    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
+  }
+
+  def handleSyncGroupRequest(request: RequestChannel.Request) {
+    val syncGroupRequest = request.body.asInstanceOf[SyncGroupRequest]
+
+    val time = new org.apache.kafka.common.utils.SystemTime()
+    val node = metadataCache.getActualAliveNodes.head
+    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
+    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
+    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+
+    def errorResponse(t: Throwable) = {
+      syncGroupRequest.getErrorResponse(request.header.apiVersion, t)
+    }
+
+    val networkClient = clientCache.getAndMaybePut(ncr)
+
+    val responseHeader = new ResponseHeader(request.header.correlationId)
+    val responseBody = {
+
+      try {
+        import NetworkClientBlockingOps._
+
+        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
+          throw new NetworkException(s"Failed to connect")
+        }
+        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
+
+        new SyncGroupResponse(response.responseBody())
 
       } catch {
         case ioe: IOException => errorResponse(ioe)

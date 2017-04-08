@@ -50,6 +50,7 @@ class VKitMApis(val requestChannel: RequestChannel,
         case ApiKeys.METADATA => handleTopicMetadataRequest(request)
         case ApiKeys.UPDATE_METADATA_KEY => handleUpdateMetadataRequest(request)
         case ApiKeys.GROUP_COORDINATOR => handleGroupCoordinatorRequest(request)
+        case ApiKeys.JOIN_GROUP => handleJoinGroupRequest(request)
         case ApiKeys.API_VERSIONS => handleApiVersionsRequest(request)
         case requestId => throw new KafkaException("Unknown api code " + requestId)
       }
@@ -231,6 +232,45 @@ class VKitMApis(val requestChannel: RequestChannel,
     requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
   }
 
+  def handleJoinGroupRequest(request: RequestChannel.Request) {
+    val joinGroupRequest = request.body.asInstanceOf[JoinGroupRequest]
+
+    val time = new org.apache.kafka.common.utils.SystemTime()
+    val node = metadataCache.getActualAliveNodes.head
+    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
+    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
+    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+
+    def errorResponse(t: Throwable) = {
+      joinGroupRequest.getErrorResponse(request.header.apiVersion, t)
+    }
+
+    val networkClient = clientCache.getAndMaybePut(ncr)
+
+    val responseHeader = new ResponseHeader(request.header.correlationId)
+    val responseBody = {
+
+      try {
+        import NetworkClientBlockingOps._
+
+        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
+          throw new NetworkException(s"Failed to connect")
+        }
+        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
+
+        new JoinGroupResponse(response.responseBody())
+
+      } catch {
+        case ioe: IOException => errorResponse(ioe)
+        case ae: ApiException => errorResponse(ae)
+      }
+    }
+
+    trace("Sending join group response %s for correlation id %d to client %s."
+      .format(responseBody, request.header.correlationId, request.header.clientId))
+    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
+  }
+
   def handleApiVersionsRequest(request: RequestChannel.Request) {
     val responseHeader = new ResponseHeader(request.header.correlationId)
     val responseBody = if (Protocol.apiVersionSupported(ApiKeys.API_VERSIONS.id, request.header.apiVersion))
@@ -254,7 +294,7 @@ class VKitMApis(val requestChannel: RequestChannel,
           leader, replicas, isr)
       }
 
-      def resultException(t: Throwable) = {
+      def errorResponse(t: Throwable) = {
         val nonExistentTopics = topics -- topicResponses.map(_.topic).toSet
 
         topicResponses ++ nonExistentTopics.map { topic =>
@@ -287,8 +327,8 @@ class VKitMApis(val requestChannel: RequestChannel,
         }.toSeq
 
       } catch {
-        case ioe: IOException => resultException(new NetworkException(ioe))
-        case ae: ApiException => resultException(ae)
+        case ioe: IOException => errorResponse(new NetworkException(ioe))
+        case ae: ApiException => errorResponse(ae)
       }
     }
   }

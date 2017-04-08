@@ -49,6 +49,7 @@ class VKitMApis(val requestChannel: RequestChannel,
         case ApiKeys.PRODUCE => handleProducerRequest(request)
         case ApiKeys.METADATA => handleTopicMetadataRequest(request)
         case ApiKeys.UPDATE_METADATA_KEY => handleUpdateMetadataRequest(request)
+        case ApiKeys.GROUP_COORDINATOR => handleGroupCoordinatorRequest(request)
         case ApiKeys.API_VERSIONS => handleApiVersionsRequest(request)
         case requestId => throw new KafkaException("Unknown api code " + requestId)
       }
@@ -189,6 +190,45 @@ class VKitMApis(val requestChannel: RequestChannel,
     val responseHeader = new ResponseHeader(correlationId)
     requestChannel.sendResponse(new Response(request, new ResponseSend(request.connectionId, responseHeader, updateMetadataResponse)))
 
+  }
+
+  def handleGroupCoordinatorRequest(request: RequestChannel.Request) {
+
+    val time = new org.apache.kafka.common.utils.SystemTime()
+    val node = metadataCache.getActualAliveNodes.head
+    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
+    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
+    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+
+    val networkClient = clientCache.getAndMaybePut(ncr)
+
+    val responseHeader = new ResponseHeader(request.header.correlationId)
+    val responseBody = {
+      def resultException(t: Throwable) = {
+        new GroupCoordinatorResponse(Errors.forException(t).code, metadataCache.getVirtualAliveNodes.head)
+      }
+
+      try {
+        import NetworkClientBlockingOps._
+
+        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
+          throw new NetworkException(s"Failed to connect")
+        }
+
+        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
+        val coordinatorResponse = new GroupCoordinatorResponse(response.responseBody())
+
+        new GroupCoordinatorResponse(coordinatorResponse.errorCode(), metadataCache.getVirtualAliveNodes.head)
+
+      } catch {
+        case ioe: IOException => resultException(new NetworkException(ioe))
+        case ae: ApiException => resultException(ae)
+      }
+    }
+
+    trace("Sending consumer metadata %s for correlation id %d to client %s."
+      .format(responseBody, request.header.correlationId, request.header.clientId))
+    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
   }
 
   def handleApiVersionsRequest(request: RequestChannel.Request) {

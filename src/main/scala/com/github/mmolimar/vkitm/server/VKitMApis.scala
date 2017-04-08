@@ -1,20 +1,24 @@
 package com.github.mmolimar.vkitm.server
 
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.concurrent.{Future => JFuture}
 
-import com.github.mmolimar.vkitm.common.cache.{Cache, ClientProducerRequest}
+import com.github.mmolimar.vkitm.common.cache.{Cache, ClientProducerRequest, NetworkClientRequest}
 import com.github.mmolimar.vkitm.utils.Helpers._
 import kafka.common._
 import kafka.message.Message
 import kafka.network.RequestChannel.Response
 import kafka.network._
-import kafka.utils.{Logging, SystemTime, ZkUtils}
+import kafka.utils.{Logging, NetworkClientBlockingOps, SystemTime, ZkUtils}
+import org.apache.kafka.clients.ClientRequest
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.errors.{ApiException, NetworkException}
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.protocol.{ApiKeys, Errors, SecurityProtocol}
 import org.apache.kafka.common.record.MemoryRecords
+import org.apache.kafka.common.requests.MetadataResponse.{PartitionMetadata, TopicMetadata}
 import org.apache.kafka.common.requests.ProduceResponse.PartitionResponse
 import org.apache.kafka.common.requests._
 
@@ -32,6 +36,7 @@ class VKitMApis(val requestChannel: RequestChannel,
                 val clusterId: String) extends Logging {
 
   private val producerCache = Cache.forProducers()
+  private val clientCache = Cache.forClients()
 
   this.logIdent = "[VKitMApi-%d] ".format(config.serverConfig.brokerId)
 
@@ -154,7 +159,7 @@ class VKitMApis(val requestChannel: RequestChannel,
       }
 
     val errorUnavailableEndpoints = requestVersion == 0
-    val topicMetadata = getTopicMetadata(topics, request.securityProtocol, errorUnavailableEndpoints)
+    val topicMetadata = getTopicMetadata(request, topics, request.securityProtocol, errorUnavailableEndpoints)
 
     val brokers = metadataCache.getVirtualAliveBrokers
 
@@ -185,19 +190,56 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   }
 
-  private def getTopicMetadata(topics: Set[String], securityProtocol: SecurityProtocol, errorUnavailableEndpoints: Boolean): Seq[MetadataResponse.TopicMetadata] = {
+  private def getTopicMetadata(request: RequestChannel.Request, topics: Set[String], securityProtocol: SecurityProtocol, errorUnavailableEndpoints: Boolean): Seq[MetadataResponse.TopicMetadata] = {
     val topicResponses = metadataCache.getTopicMetadata(topics, securityProtocol, errorUnavailableEndpoints)
     if (topics.isEmpty || topicResponses.size == topics.size) {
       topicResponses
     } else {
-      val nonExistentTopics = topics -- topicResponses.map(_.topic).toSet
-      val responsesForNonExistentTopics = nonExistentTopics.map {
-        topic =>
-          //TODO send request to actual brokers
-          new MetadataResponse.TopicMetadata(Errors.UNKNOWN_TOPIC_OR_PARTITION, topic, false,
-            java.util.Collections.emptyList())
+
+      def fakePartitionMetadata(partitionMetadata: PartitionMetadata) = {
+        val nodes = metadataCache.getVirtualAliveNodes
+        val leader = nodes.head
+        val replicas, isr = nodes.toList.asJava
+        new PartitionMetadata(partitionMetadata.error, partitionMetadata.partition,
+          leader, replicas, isr)
       }
-      topicResponses ++ responsesForNonExistentTopics
+
+      def resultException(t: Throwable) = {
+        val nonExistentTopics = topics -- topicResponses.map(_.topic).toSet
+
+        topicResponses ++ nonExistentTopics.map { topic =>
+          new MetadataResponse.TopicMetadata(Errors.forException(t), topic, Topic.isInternal(topic),
+            java.util.Collections.emptyList())
+        }.toSeq
+      }
+
+      import NetworkClientBlockingOps._
+
+      //must request update to the brokers
+      val time = new org.apache.kafka.common.utils.SystemTime()
+      val node = metadataCache.getActualAliveNodes.head
+      val send = new RequestSend(node.idString, request.header, request.body.toStruct)
+      val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
+      val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+
+      val networkClient = clientCache.getAndMaybePut(ncr)
+      try {
+        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
+          throw new NetworkException(s"Failed to connect")
+        }
+
+        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
+        val metadataResponse = new MetadataResponse(response.responseBody())
+
+        metadataResponse.topicMetadata.asScala.map { tm =>
+          new TopicMetadata(tm.error(), tm.topic(), tm.isInternal,
+            tm.partitionMetadata.asScala.map(fakePartitionMetadata(_)).asJava)
+        }.toSeq
+
+      } catch {
+        case ioe: IOException => resultException(new NetworkException(ioe))
+        case ae: ApiException => resultException(ae)
+      }
     }
   }
 

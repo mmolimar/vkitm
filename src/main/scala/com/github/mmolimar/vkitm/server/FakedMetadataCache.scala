@@ -53,6 +53,14 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
     }
   }
 
+  def getVirtualAliveNodes: Seq[Node] = {
+    inReadLock(vkMetadataLock) {
+      virtualAliveNodes.flatMap {
+        _._2.map(_._2)
+
+      }.toSeq
+    }
+  }
   def getActualAliveBrokers: Seq[Broker] = {
     inReadLock(vkMetadataLock) {
       actualAliveBrokers.values.toBuffer

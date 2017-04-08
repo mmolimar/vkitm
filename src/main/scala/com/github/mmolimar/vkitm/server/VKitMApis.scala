@@ -2,6 +2,7 @@ package com.github.mmolimar.vkitm.server
 
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.util
 import java.util.concurrent.{Future => JFuture}
 
 import com.github.mmolimar.vkitm.common.cache.{Cache, ClientProducerRequest, NetworkClientRequest}
@@ -47,6 +48,7 @@ class VKitMApis(val requestChannel: RequestChannel,
       ApiKeys.forId(request.requestId) match {
         //by now, some ApiKeys are supported (just for producing messages)
         case ApiKeys.PRODUCE => handleProducerRequest(request)
+        case ApiKeys.FETCH => handleFetchRequest(request)
         case ApiKeys.LIST_OFFSETS => handleListOffsetRequest(request)
         case ApiKeys.METADATA => handleTopicMetadataRequest(request)
         case ApiKeys.UPDATE_METADATA_KEY => handleUpdateMetadataRequest(request)
@@ -145,6 +147,51 @@ class VKitMApis(val requestChannel: RequestChannel,
       produceRequest.clearPartitionRecords()
     }
 
+  }
+
+  def handleFetchRequest(request: RequestChannel.Request) {
+    val sFetchRequest = request.requestObj.asInstanceOf[kafka.api.FetchRequest]
+    val fetchData: Map[TopicPartition, FetchRequest.PartitionData] = sFetchRequest.requestInfo.map { ri =>
+      (new TopicPartition(ri._1.topic, ri._1.partition), new FetchRequest.PartitionData(ri._2.offset, sFetchRequest.maxBytes))
+    }.toMap
+
+    val jFetchRequest = new FetchRequest(sFetchRequest.maxWait,
+      sFetchRequest.minBytes,
+      sFetchRequest.maxBytes,
+      new util.LinkedHashMap[TopicPartition, FetchRequest.PartitionData](fetchData.asJava))
+
+    val header = new RequestHeader(ApiKeys.FETCH.id, sFetchRequest.versionId, sFetchRequest.clientId, sFetchRequest.correlationId)
+    val time = new org.apache.kafka.common.utils.SystemTime()
+    val node = metadataCache.getActualAliveNodes.head
+    val send = new RequestSend(node.idString, header, jFetchRequest.toStruct)
+    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
+    val ncr = NetworkClientRequest(sFetchRequest.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+
+    val networkClient = clientCache.getAndMaybePut(ncr)
+
+    val responseHeader = new ResponseHeader(sFetchRequest.correlationId)
+    val responseBody = {
+      def resultException(t: Throwable) = {
+        jFetchRequest.getErrorResponse(sFetchRequest.versionId, t)
+      }
+
+      try {
+        import NetworkClientBlockingOps._
+
+        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
+          throw new NetworkException(s"Failed to connect")
+        }
+
+        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
+        new FetchResponse(response.responseBody())
+
+      } catch {
+        case ioe: IOException => resultException(new NetworkException(ioe))
+        case ae: ApiException => resultException(ae)
+      }
+    }
+
+    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
   }
 
   def handleListOffsetRequest(request: RequestChannel.Request) {

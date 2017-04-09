@@ -13,8 +13,8 @@ import kafka.message.Message
 import kafka.network.RequestChannel.Response
 import kafka.network._
 import kafka.utils._
-import org.apache.kafka.clients.ClientRequest
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
+import org.apache.kafka.clients.{ClientRequest, ClientResponse}
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.{ApiException, NetworkException}
 import org.apache.kafka.common.metrics.Metrics
@@ -165,74 +165,22 @@ class VKitMApis(val requestChannel: RequestChannel,
       new util.LinkedHashMap[TopicPartition, FetchRequest.PartitionData](fetchData.asJava))
 
     val header = new RequestHeader(ApiKeys.FETCH.id, sFetchRequest.versionId, sFetchRequest.clientId, sFetchRequest.correlationId)
-    val time = new org.apache.kafka.common.utils.SystemTime()
-    val node = metadataCache.getActualAliveNodes.head
-    val send = new RequestSend(node.idString, header, jFetchRequest.toStruct)
-    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
-    //TODO fix this
     val ncr = NetworkClientRequest(sFetchRequest.clientId + UUID.randomUUID(), metadataCache.getMetadataUpdater, config.serverConfig, metrics)
 
-    val networkClient = clientCache.getAndMaybePut(ncr)
+    sendNetworkClientRequest(header, request,
+      jFetchRequest, ncr, request.connectionId,
+      sFetchRequest.correlationId, response => new FetchResponse(response.responseBody()))
 
-    val responseHeader = new ResponseHeader(sFetchRequest.correlationId)
-    val responseBody = {
-      def resultException(t: Throwable) = {
-        jFetchRequest.getErrorResponse(sFetchRequest.versionId, t)
-      }
-
-      try {
-        import NetworkClientBlockingOps._
-
-        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
-          throw new NetworkException(s"Failed to connect")
-        }
-
-        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
-        new FetchResponse(response.responseBody())
-
-      } catch {
-        case ioe: IOException => resultException(new NetworkException(ioe))
-        case ae: ApiException => resultException(ae)
-      }
-    }
-
-    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
   }
 
   def handleListOffsetRequest(request: RequestChannel.Request) {
     val listOffsetRequest = request.body.asInstanceOf[ListOffsetRequest]
-
-    val time = new org.apache.kafka.common.utils.SystemTime()
-    val node = metadataCache.getActualAliveNodes.head
-    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
-    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
     val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
 
-    val networkClient = clientCache.getAndMaybePut(ncr)
+    sendNetworkClientRequest(request.header, request,
+      listOffsetRequest, ncr, request.connectionId,
+      request.header.correlationId, response => new ListOffsetResponse(response.responseBody()))
 
-    val responseHeader = new ResponseHeader(request.header.correlationId)
-    val responseBody = {
-      def resultException(t: Throwable) = {
-        listOffsetRequest.getErrorResponse(request.header.apiVersion, t)
-      }
-
-      try {
-        import NetworkClientBlockingOps._
-
-        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
-          throw new NetworkException(s"Failed to connect")
-        }
-
-        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
-        new ListOffsetResponse(response.responseBody())
-
-      } catch {
-        case ioe: IOException => resultException(new NetworkException(ioe))
-        case ae: ApiException => resultException(ae)
-      }
-    }
-
-    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
   }
 
   def handleTopicMetadataRequest(request: RequestChannel.Request) {
@@ -286,273 +234,74 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleOffsetCommitRequest(request: RequestChannel.Request) {
     val offsetCommitRequest = request.body.asInstanceOf[OffsetCommitRequest]
-
-    val time = new org.apache.kafka.common.utils.SystemTime()
-    val node = metadataCache.getActualAliveNodes.head
-    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
-    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
     val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
 
-    val networkClient = clientCache.getAndMaybePut(ncr)
+    sendNetworkClientRequest(request.header, request,
+      offsetCommitRequest, ncr, request.connectionId,
+      request.header.correlationId, response => new OffsetCommitResponse(response.responseBody()))
 
-    val responseHeader = new ResponseHeader(request.header.correlationId)
-    val responseBody = {
-      def resultException(t: Throwable) = {
-        offsetCommitRequest.getErrorResponse(request.header.apiVersion, t)
-      }
-
-      try {
-        import NetworkClientBlockingOps._
-
-        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
-          throw new NetworkException(s"Failed to connect")
-        }
-
-        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
-
-        new OffsetCommitResponse(response.responseBody())
-
-      } catch {
-        case ioe: IOException => resultException(new NetworkException(ioe))
-        case ae: ApiException => resultException(ae)
-      }
-    }
-
-    requestChannel.sendResponse(new Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
   }
 
   def handleOffsetFetchRequest(request: RequestChannel.Request) {
     val offsetFetchRequest = request.body.asInstanceOf[OffsetFetchRequest]
-
-    val time = new org.apache.kafka.common.utils.SystemTime()
-    val node = metadataCache.getActualAliveNodes.head
-    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
-    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
     val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
 
-    val networkClient = clientCache.getAndMaybePut(ncr)
+    sendNetworkClientRequest(request.header, request,
+      offsetFetchRequest, ncr, request.connectionId,
+      request.header.correlationId, response => new OffsetFetchResponse(response.responseBody()))
 
-    val responseHeader = new ResponseHeader(request.header.correlationId)
-    val responseBody = {
-      def resultException(t: Throwable) = {
-        offsetFetchRequest.getErrorResponse(request.header.apiVersion, t)
-      }
-
-      try {
-        import NetworkClientBlockingOps._
-
-        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
-          throw new NetworkException(s"Failed to connect")
-        }
-
-        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
-        val offsetFetchResponse = new OffsetFetchResponse(response.responseBody())
-        offsetFetchResponse
-
-      } catch {
-        case ioe: IOException => resultException(new NetworkException(ioe))
-        case ae: ApiException => resultException(ae)
-      }
-    }
-
-    trace(s"Sending offset fetch response $responseBody for correlation id ${request.header.correlationId} to client ${request.header.clientId}.")
-    requestChannel.sendResponse(new Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
   }
 
   def handleGroupCoordinatorRequest(request: RequestChannel.Request) {
-
-    val time = new org.apache.kafka.common.utils.SystemTime()
-    val node = metadataCache.getActualAliveNodes.head
-    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
-    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
+    val groupCoordinatorRequest = request.body.asInstanceOf[GroupCoordinatorRequest]
     val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
 
-    val networkClient = clientCache.getAndMaybePut(ncr)
-
-    val responseHeader = new ResponseHeader(request.header.correlationId)
-    val responseBody = {
-      def resultException(t: Throwable) = {
-        new GroupCoordinatorResponse(Errors.forException(t).code, metadataCache.getVirtualAliveNodes.head)
-      }
-
-      try {
-        import NetworkClientBlockingOps._
-
-        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
-          throw new NetworkException(s"Failed to connect")
-        }
-
-        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
+    sendNetworkClientRequest(request.header, request,
+      groupCoordinatorRequest, ncr, request.connectionId,
+      request.header.correlationId,
+      response => {
         val coordinatorResponse = new GroupCoordinatorResponse(response.responseBody())
-
         new GroupCoordinatorResponse(coordinatorResponse.errorCode(), metadataCache.getVirtualAliveNodes.head)
-
-      } catch {
-        case ioe: IOException => resultException(new NetworkException(ioe))
-        case ae: ApiException => resultException(ae)
-      }
-    }
-
-    trace("Sending consumer metadata %s for correlation id %d to client %s."
-      .format(responseBody, request.header.correlationId, request.header.clientId))
-    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
+      },
+      Option(t => new GroupCoordinatorResponse(Errors.forException(t).code, metadataCache.getVirtualAliveNodes.head)))
   }
 
   def handleJoinGroupRequest(request: RequestChannel.Request) {
     val joinGroupRequest = request.body.asInstanceOf[JoinGroupRequest]
-
-    val time = new org.apache.kafka.common.utils.SystemTime()
-    val node = metadataCache.getActualAliveNodes.head
-    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
-    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
     val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
 
-    def errorResponse(t: Throwable) = {
-      joinGroupRequest.getErrorResponse(request.header.apiVersion, t)
-    }
+    sendNetworkClientRequest(request.header, request,
+      joinGroupRequest, ncr, request.connectionId,
+      request.header.correlationId, response => new JoinGroupResponse(response.responseBody()))
 
-    val networkClient = clientCache.getAndMaybePut(ncr)
-
-    val responseHeader = new ResponseHeader(request.header.correlationId)
-    val responseBody = {
-
-      try {
-        import NetworkClientBlockingOps._
-
-        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
-          throw new NetworkException(s"Failed to connect")
-        }
-        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
-
-        new JoinGroupResponse(response.responseBody())
-
-      } catch {
-        case ioe: IOException => errorResponse(ioe)
-        case ae: ApiException => errorResponse(ae)
-      }
-    }
-
-    trace("Sending join group response %s for correlation id %d to client %s."
-      .format(responseBody, request.header.correlationId, request.header.clientId))
-    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
   }
 
   def handleHeartbeatRequest(request: RequestChannel.Request) {
     val heartbeatRequest = request.body.asInstanceOf[HeartbeatRequest]
-    val respHeader = new ResponseHeader(request.header.correlationId)
-
-    val time = new org.apache.kafka.common.utils.SystemTime()
-    val node = metadataCache.getActualAliveNodes.head
-    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
-    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
     val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
 
-    def errorResponse(t: Throwable) = {
-      heartbeatRequest.getErrorResponse(request.header.apiVersion, t)
-    }
-
-    val networkClient = clientCache.getAndMaybePut(ncr)
-
-    val responseHeader = new ResponseHeader(request.header.correlationId)
-    val responseBody = {
-
-      try {
-        import NetworkClientBlockingOps._
-
-        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
-          throw new NetworkException(s"Failed to connect")
-        }
-        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
-
-        new HeartbeatResponse(response.responseBody())
-
-      } catch {
-        case ioe: IOException => errorResponse(ioe)
-        case ae: ApiException => errorResponse(ae)
-      }
-    }
-
-    trace("Sending heartbeat response %s for correlation id %d to client %s."
-      .format(responseBody, request.header.correlationId, request.header.clientId))
-    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
+    sendNetworkClientRequest(request.header, request,
+      heartbeatRequest, ncr, request.connectionId,
+      request.header.correlationId, response => new HeartbeatResponse(response.responseBody()))
   }
 
   def handleLeaveGroupRequest(request: RequestChannel.Request) {
     val leaveGroupRequest = request.body.asInstanceOf[LeaveGroupRequest]
-
-    val time = new org.apache.kafka.common.utils.SystemTime()
-    val node = metadataCache.getActualAliveNodes.head
-    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
-    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
     val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
 
-    def errorResponse(t: Throwable) = {
-      leaveGroupRequest.getErrorResponse(request.header.apiVersion, t)
-    }
-
-    val networkClient = clientCache.getAndMaybePut(ncr)
-
-    val responseHeader = new ResponseHeader(request.header.correlationId)
-    val responseBody = {
-
-      try {
-        import NetworkClientBlockingOps._
-
-        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
-          throw new NetworkException(s"Failed to connect")
-        }
-        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
-
-        new LeaveGroupResponse(response.responseBody())
-
-      } catch {
-        case ioe: IOException => errorResponse(ioe)
-        case ae: ApiException => errorResponse(ae)
-      }
-    }
-
-    trace("Sending leave group response %s for correlation id %d to client %s."
-      .format(responseBody, request.header.correlationId, request.header.clientId))
-    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
+    sendNetworkClientRequest(request.header, request,
+      leaveGroupRequest, ncr, request.connectionId,
+      request.header.correlationId, response => new LeaveGroupResponse(response.responseBody()))
   }
 
   def handleSyncGroupRequest(request: RequestChannel.Request) {
     val syncGroupRequest = request.body.asInstanceOf[SyncGroupRequest]
-
-    val time = new org.apache.kafka.common.utils.SystemTime()
-    val node = metadataCache.getActualAliveNodes.head
-    val send = new RequestSend(node.idString, request.header, request.body.toStruct)
-    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
     val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
 
-    def errorResponse(t: Throwable) = {
-      syncGroupRequest.getErrorResponse(request.header.apiVersion, t)
-    }
+    sendNetworkClientRequest(request.header, request,
+      syncGroupRequest, ncr, request.connectionId,
+      request.header.correlationId, response => new SyncGroupResponse(response.responseBody()))
 
-    val networkClient = clientCache.getAndMaybePut(ncr)
-
-    val responseHeader = new ResponseHeader(request.header.correlationId)
-    val responseBody = {
-
-      try {
-        import NetworkClientBlockingOps._
-
-        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
-          throw new NetworkException(s"Failed to connect")
-        }
-        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
-
-        new SyncGroupResponse(response.responseBody())
-
-      } catch {
-        case ioe: IOException => errorResponse(ioe)
-        case ae: ApiException => errorResponse(ae)
-      }
-    }
-
-    trace("Sending join group response %s for correlation id %d to client %s."
-      .format(responseBody, request.header.correlationId, request.header.clientId))
-    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, responseHeader, responseBody)))
   }
 
   def handleApiVersionsRequest(request: RequestChannel.Request) {
@@ -619,6 +368,47 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def close() {
     info("Shutdown complete.")
+  }
+
+  private def sendNetworkClientRequest(header: RequestHeader,
+                                       request: RequestChannel.Request,
+                                       jRequest: AbstractRequest,
+                                       ncr: NetworkClientRequest,
+                                       connectionId: String,
+                                       correlationId: Int,
+                                       buildResponse: ClientResponse => AbstractRequestResponse,
+                                       errorResponse: Option[Throwable => AbstractRequestResponse] = None) {
+
+    val time = new org.apache.kafka.common.utils.SystemTime()
+    val node = metadataCache.getActualAliveNodes.head
+    val send = new RequestSend(node.idString, header, jRequest.toStruct)
+    val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
+
+    val networkClient = clientCache.getAndMaybePut(ncr)
+
+    val responseHeader = new ResponseHeader(correlationId)
+    val responseBody = {
+      def resultException(t: Throwable) = {
+        jRequest.getErrorResponse(header.apiVersion, t)
+      }
+
+      try {
+        import NetworkClientBlockingOps._
+
+        if (!networkClient.blockingReady(node, config.serverConfig.requestTimeoutMs.longValue)(time)) {
+          throw new NetworkException(s"Failed to connect")
+        }
+
+        val response = clientCache.getAndMaybePut(ncr).blockingSendAndReceive(clientRequest)(time)
+        buildResponse(response)
+
+      } catch {
+        case ioe: IOException => errorResponse.getOrElse(resultException(_))(new NetworkException(ioe))
+        case ae: ApiException => errorResponse.getOrElse(resultException(_))(ae)
+      }
+    }
+
+    requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(connectionId, responseHeader, responseBody)))
   }
 
   private def getBrokerList() = {

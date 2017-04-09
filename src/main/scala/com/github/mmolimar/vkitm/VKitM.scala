@@ -1,6 +1,6 @@
 package com.github.mmolimar.vkitm
 
-import java.util.Properties
+import java.util.{Date, Properties}
 
 import com.github.mmolimar.vkitm.server.{VKitMServer, VKitMServerStartable}
 import joptsimple.OptionParser
@@ -19,6 +19,7 @@ object VKitM extends Logging {
   }
 
   def main(args: Array[String]): Unit = {
+    showBanner
     try {
       val serverProps = getPropsFromArgs(args, 0)
       val producerProps = getPropsFromArgs(args, 1)
@@ -39,5 +40,25 @@ object VKitM extends Logging {
         System.exit(1)
     }
     System.exit(0)
+  }
+
+  private def showBanner = {
+    info(
+      s"""
+         |=====================================================
+         | _    __    __ __    _    __     __  ___
+         || |  / /   / //_/   (_)  / /_   /  |/  /
+         || | / /   / ,<     / /  / __/  / /|_/ /
+         || |/ /   / /| |   / /  / /_   / /  / /
+         ||___/   /_/ |_|  /_/  /___/  /_/  /_/
+         |                                         Mario Molina
+         |
+         |> Start time    : ${new Date()}
+         |> Number of CPUs: ${Runtime.getRuntime.availableProcessors}
+         |> Total memory  : ${Runtime.getRuntime.totalMemory}
+         |> Free memory   : ${Runtime.getRuntime.freeMemory}
+         |=====================================================
+    """.stripMargin)
+
   }
 }

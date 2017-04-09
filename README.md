@@ -3,13 +3,16 @@ VKitM is a native [Apache Kafka](https://kafka.apache.org/) proxy using the nati
 
 Its name is due to how has been designed: the application acts as an intermediary between the Kafka client 
 and the Kafka cluster, modifying the requests and responses from/to the client. 
-Actually, the client thinks that it's connecting to a Kafka cluster (by now, with one node) and 
-doesn't now what's behind (a entirely Kafka cluster).
+Actually, the client thinks that the connection is to a Kafka cluster (by now, with one node) and 
+doesn't now what's behind (an entirely Kafka cluster).
+
+Right now, the implementation includes a subset of the [API Keys](https://kafka.apache.org/protocol#protocol_api_keys)
+but can produce and consume messages.
 
 ## How it works
 
 1. Kafka client connects to a single Kafka broker. Actually, it's connecting to a VKitM.
-2. VKitM modifies the request, depending of the [API Key](https://kafka.apache.org/protocol#protocol_api_keys).
+2. VKitM modifies the request, depending of the API Key.
 3. The modified request is sent to the actual Kafka cluster, if applicable.
 3. VKitM receives the response from the Kafka brokers.
 4. Based on the kind of response it has to send to the client, VKitM changes data related with brokers, 
@@ -42,7 +45,7 @@ However, most of them lack of some of the following features I'd like to provide
 
 ## Future work
 
-- Implement most of the Kafka protocol API Keys (right now, the producer keys are implemented).
+- Implement most of the Kafka protocol API Keys.
 - Develop a VKitM cluster, avoiding SPOF (Single Point Of Failure) which now exists.
 - 'Dockerizer' the app.
 

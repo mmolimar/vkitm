@@ -1,11 +1,10 @@
 package com.github.mmolimar.vkitm.server
 
-import java.util.Properties
-
+import com.typesafe.config.Config
 import kafka.utils.Logging
 
 object VKitMServerStartable {
-  def fromProps(serverProps: Properties, producerProps: Properties) = {
+  def fromProps(serverProps: Config, producerProps: Config) = {
     new VKitMServerStartable(VKitMConfig.fromProps(serverProps, producerProps))
   }
 }

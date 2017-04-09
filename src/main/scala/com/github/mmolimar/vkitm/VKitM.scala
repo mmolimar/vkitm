@@ -1,46 +1,36 @@
 package com.github.mmolimar.vkitm
 
-import java.util.{Date, Properties}
+import java.util.Date
 
-import com.github.mmolimar.vkitm.server.{VKitMServer, VKitMServerStartable}
-import joptsimple.OptionParser
-import kafka.utils.{CommandLineUtils, Logging}
-import org.apache.kafka.common.utils.Utils
+import com.github.mmolimar.vkitm.server.VKitMServerStartable
+import kafka.utils.Logging
 
-object VKitM extends Logging {
+object VKitM extends App with Logging {
 
-  def getPropsFromArgs(args: Array[String], index: Int): Properties = {
-    val optionParser = new OptionParser
-    if (args.length == 0) {
-      CommandLineUtils.printUsageAndDie(optionParser, "USAGE: java [options] %s server.properties producer.properties".format(classOf[VKitMServer].getSimpleName()))
-    }
+  import com.github.mmolimar.vkitm.utils.Helpers.config
 
-    Utils.loadProps(args(index))
+  showBanner
+
+  try {
+    val serverProps = config.getObject("server").toConfig
+    val producerProps = config.getObject("producer").toConfig
+    val vkitmServerStartable = VKitMServerStartable.fromProps(serverProps, producerProps)
+
+    Runtime.getRuntime().addShutdownHook(new Thread() {
+      override def run() = {
+        vkitmServerStartable.shutdown
+      }
+    })
+
+    vkitmServerStartable.startup
+    vkitmServerStartable.awaitShutdown
   }
-
-  def main(args: Array[String]): Unit = {
-    showBanner
-    try {
-      val serverProps = getPropsFromArgs(args, 0)
-      val producerProps = getPropsFromArgs(args, 1)
-      val vkitmServerStartable = VKitMServerStartable.fromProps(serverProps, producerProps)
-
-      Runtime.getRuntime().addShutdownHook(new Thread() {
-        override def run() = {
-          vkitmServerStartable.shutdown
-        }
-      })
-
-      vkitmServerStartable.startup
-      vkitmServerStartable.awaitShutdown
-    }
-    catch {
-      case e: Throwable =>
-        fatal(e)
-        System.exit(1)
-    }
-    System.exit(0)
+  catch {
+    case e: Throwable =>
+      fatal(e)
+      System.exit(1)
   }
+  System.exit(0)
 
   private def showBanner = {
     info(

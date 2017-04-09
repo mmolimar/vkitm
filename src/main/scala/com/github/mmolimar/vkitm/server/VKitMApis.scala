@@ -7,7 +7,7 @@ import java.util.UUID
 import java.util.concurrent.{Future => JFuture}
 
 import com.github.mmolimar.vkitm.common.cache.{Cache, ClientProducerRequest, NetworkClientRequest}
-import com.github.mmolimar.vkitm.utils.Helpers._
+import com.github.mmolimar.vkitm.utils.Helpers.JFutureHelpers
 import kafka.common._
 import kafka.message.Message
 import kafka.network.RequestChannel.Response

@@ -100,7 +100,11 @@ private[cache] class Cache[K <: CacheEntry, V <: AnyRef](initialCapacity: Int,
 
   def getAndMaybePut(key: K) = cache.get(key)
 
-  def contains(key: K) = cache.getIfPresent(key) == null
+  def contains(key: K) = cache.getIfPresent(key) != null
+
+  def remove(key: K) = cache.invalidate(key)
+
+  def size = cache.size
 
 }
 

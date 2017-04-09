@@ -40,8 +40,10 @@ However, most of them lack of some of the following features I'd like to provide
 ### Building source jar ###
     gradle clean build
 
+**NOTE**: modify ``src/main/resources/application.conf`` file, if applies, to your custom configuration.
+
 ### Run VKitM ###
-    java -jar build/libs/vkitm-{VERSION}.jar /path/to/file/server.properties /path/to/file/producer.properties
+    java -jar build/libs/vkitm-{VERSION}.jar
 
 ## Future work
 

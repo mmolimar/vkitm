@@ -1,4 +1,3 @@
-group 'com.github.mmolimar.kafka'
 
 apply plugin: 'scala'
 apply plugin: 'idea'
@@ -8,9 +7,12 @@ ext {
     scalaVersion = '2.11.8'
     scalaBaseVersion = scalaVersion.substring(0, scalaVersion.lastIndexOf("."))
     scalaTestVersion = '3.0.0'
+    scalaMockVersion = '3.5.0'
 
     kafkaVersion = '0.10.1.0'
     guavaVersion = '21.0'
+    findBugsVersion = '3.0.2'
+    junitVersion = '4.12'
 }
 
 repositories {
@@ -22,8 +24,11 @@ dependencies {
     compile group: 'org.apache.kafka', name: "kafka_$scalaBaseVersion", version: kafkaVersion
     compile group: 'org.apache.kafka', name: 'kafka-clients', version: kafkaVersion
     compile group: 'com.google.guava', name: 'guava', version: guavaVersion
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: findBugsVersion
 
+    testCompile group: 'junit', name: 'junit', version: junitVersion
     testCompile group: 'org.scalatest', name: "scalatest_$scalaBaseVersion", version: scalaTestVersion
+    testCompile group: 'org.scalamock', name: "scalamock-scalatest-support_$scalaBaseVersion", version: scalaMockVersion
 }
 
 jar {
@@ -34,7 +39,7 @@ jar {
     }
     manifest {
         attributes(
-                'Main-Class': 'com.github.mmolimar.kafka.vkitm.VKitM',
+                'Main-Class': 'com.github.mmolimar.vkitm.VKitM',
                 'Class-Path': configurations.runtime.collect { it.getName() }.join(' ')
         )
     }

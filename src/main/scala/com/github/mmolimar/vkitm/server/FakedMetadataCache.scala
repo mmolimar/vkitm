@@ -26,7 +26,7 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
   private val vkBrokersLock = new ReentrantReadWriteLock()
   private val metadataUpdater = new FakedMetadataUpdater
   //the controller is always the same, the virtual broker
-  private var controllerId: Option[Int] = Option(vkId)
+  private val controllerId: Option[Int] = Option(vkId)
 
   this.logIdent = s"[Virtual Kafka Metadata Cache on virtual broker $vkId] "
 
@@ -34,12 +34,6 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
   def getAllTopics(): Set[String] = {
     inReadLock(vkMetadataLock) {
       cache.keySet.toSet
-    }
-  }
-
-  def getNonExistingTopics(topics: Set[String]): Set[String] = {
-    inReadLock(vkMetadataLock) {
-      topics -- cache.keySet
     }
   }
 

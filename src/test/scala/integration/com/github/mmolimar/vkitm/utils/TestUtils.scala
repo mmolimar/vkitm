@@ -88,4 +88,6 @@ object TestUtils {
     ret && path.delete
   }
 
+  def randomString(length: Int = 10): String = scala.util.Random.alphanumeric.take(length).mkString
+
 }

@@ -1,12 +1,14 @@
-package integration.com.github.mmolimar.vkitm.server
+package com.github.mmolimar.vkitm.server
 
 import java.util.concurrent.TimeUnit
 
-import com.github.mmolimar.vkitm.server.VKitMServer
-import integration.com.github.mmolimar.vkitm.embedded.{EmbeddedKafkaCluster, EmbeddedVKitM, EmbeddedZookeeperServer}
-import integration.com.github.mmolimar.vkitm.utils.TestUtils
+import com.github.mmolimar.vkitm.embedded.{EmbeddedKafkaCluster, EmbeddedVKitM, EmbeddedZookeeperServer}
+import com.github.mmolimar.vkitm.utils.TestUtils
+import kafka.common.Topic
 import org.apache.kafka.clients.consumer.{ConsumerRebalanceListener, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.clients.producer.ProducerRecord
+import org.apache.kafka.common.protocol.{Errors, SecurityProtocol}
+import org.apache.kafka.common.requests.MetadataResponse
 import org.apache.kafka.common.{Node, TopicPartition}
 import org.junit.runner.RunWith
 import org.scalatest.Matchers._
@@ -14,9 +16,10 @@ import org.scalatest.junit.JUnitRunner
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, WordSpec}
 
 import scala.collection.JavaConverters._
+import scala.collection.Seq
 
 @RunWith(classOf[JUnitRunner])
-class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfterEach{
+class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfterEach {
 
   val zkServer = new EmbeddedZookeeperServer
   val kafkaCluster = new EmbeddedKafkaCluster(zkServer.getConnection)
@@ -42,6 +45,7 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
         metadata.offset should be(0)
         kafkaCluster.existTopic(currentTopic) should be(true)
       }
+
       "increment the offset" in {
         val numMessages = 10
         kafkaCluster.existTopic(currentTopic) should be(false)
@@ -52,6 +56,7 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
         }
         kafkaCluster.existTopic(currentTopic) should be(true)
       }
+
       "publish the same messages expected by the VKitM consumer" in {
         val numMessages = 10
         val record = new ProducerRecord[Array[Byte], Array[Byte]](currentTopic, key, value)
@@ -76,6 +81,7 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
         }
         vkitmConsumer.unsubscribe
       }
+
       "publish the same messages expected by the Kafka consumer" in {
         val numMessages = 10
         val record = new ProducerRecord[Array[Byte], Array[Byte]](currentTopic, key, value)
@@ -135,18 +141,73 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
     }
   }
 
-  override def beforeEach() = currentTopic = TestUtils.randomString()
+  "An admin" when {
+    "listing topics" should {
+      "expect that there are the same topics in VKitM and ZK" in {
+        val topics = kafkaCluster.listTopics
+        topics.isEmpty should be(false)
+        topics.size should be(vkitmServer.getServer.metadataCache.getAllTopics.size)
+        topics.foreach { topic =>
+          vkitmServer.getServer.metadataCache.contains(topic) should be(true)
+        }
+      }
+    }
 
-  override def afterEach() = checkTopicPartitions(currentTopic)
+    "creating topics" should {
+      "expect the metadata in VKitM server is updated" in {
+        val numPartitions = 25
+        kafkaCluster.existTopic(currentTopic) should be(false)
+        kafkaCluster.createTopic(currentTopic, numPartitions)
+        kafkaCluster.existTopic(currentTopic) should be(true)
+        for (i <- 1 until 5 if !vkitmServer.getServer.metadataCache.contains(currentTopic)) {
+          //must sleep to wait the listener receives the update
+          Thread.sleep(200)
+        }
+        vkitmServer.getServer.metadataCache.contains(currentTopic) should be(true)
+
+        val metadata: Seq[MetadataResponse.TopicMetadata] = vkitmServer.getServer.metadataCache.getTopicMetadata(Set(currentTopic), SecurityProtocol.PLAINTEXT)
+        metadata.isEmpty should be(false)
+        metadata.foreach { tm =>
+          tm.isInternal should be(false)
+          tm.error.code should be(Errors.NONE.code)
+
+          tm.partitionMetadata.size should be(1)
+          tm.partitionMetadata.asScala.foreach { pm =>
+            validateVirtualNode(pm.leader)
+            pm.error.code should be(Errors.NONE.code)
+            pm.isr.asScala.foreach(validateVirtualNode(_))
+            pm.replicas.asScala.foreach(validateVirtualNode(_))
+          }
+        }
+      }
+    }
+
+    "deleting topics" should {
+      "expect the metadata in VKitM server is updated" in {
+        val topics = kafkaCluster.listTopics
+        topics.isEmpty should be(false)
+        topics.filter(!Topic.isInternal(_)).foreach { topic => {
+          vkitmServer.getServer.metadataCache.contains(topic) should be(true)
+          kafkaCluster.deleteTopic(topic)
+          for (i <- 1 until 5 if vkitmServer.getServer.metadataCache.contains(topic)) {
+            //must sleep to wait the listener receives the update
+            Thread.sleep(200)
+          }
+          vkitmServer.getServer.metadataCache.contains(topic) should be(false)
+        }
+        }
+      }
+    }
+  }
+
+  private def validateVirtualNode(node: Node) = {
+    node.port should be(vkitmServer.getPort)
+    node.id should be(VKitMServer.DEFAULT_VKITM_BROKER_ID)
+  }
 
   private def checkTopicPartitions(topic: String) = {
     val vkitmTopicPartitions = vkitmConsumer.partitionsFor(topic).asScala
     val kafkaTopicPartitions = kafkaConsumer.partitionsFor(topic).asScala
-
-    def validateVirtualNode(node: Node) = {
-      node.port should be(vkitmServer.getPort)
-      node.id should be(VKitMServer.DEFAULT_VKITM_BROKER_ID)
-    }
 
     vkitmTopicPartitions.size should be(kafkaTopicPartitions.size)
     for ((tp, i) <- vkitmTopicPartitions.zipWithIndex) {
@@ -166,6 +227,10 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
       for (partition <- partitions.asScala) consumer.seek(partition, 0)
     }
   }
+
+  override def beforeEach() = currentTopic = TestUtils.randomString()
+
+  override def afterEach() = checkTopicPartitions(currentTopic)
 
   override def beforeAll {
     zkServer.startup

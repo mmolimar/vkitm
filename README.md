@@ -1,4 +1,4 @@
-# VKitM - Virtual Kafka in the Middle
+# VKitM - Virtual Kafka in the Middle [![Build Status](https://travis-ci.org/mmolimar/vkitm.svg?branch=master)](https://travis-ci.org/mmolimar/vkitm)[![Coverage Status](https://coveralls.io/repos/github/mmolimar/vkitm/badge.svg?branch=master)](https://coveralls.io/github/mmolimar/vkitm?branch=master)
 VKitM is a native [Apache Kafka](https://kafka.apache.org/) proxy using the native Kafka protocol.
 
 Its name is due to how has been designed: the application acts as an intermediary between the Kafka client 

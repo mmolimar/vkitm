@@ -1,9 +1,9 @@
-package integration.com.github.mmolimar.vkitm.embedded
+package com.github.mmolimar.vkitm.embedded
 
 import java.io.{File, IOException}
 import java.net.InetSocketAddress
 
-import integration.com.github.mmolimar.vkitm.utils.TestUtils
+import com.github.mmolimar.vkitm.utils.TestUtils
 import kafka.utils.{CoreUtils, Logging}
 import org.apache.zookeeper.server.{ServerCnxnFactory, ZooKeeperServer}
 

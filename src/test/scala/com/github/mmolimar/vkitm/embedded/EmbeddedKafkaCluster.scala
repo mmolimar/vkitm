@@ -1,9 +1,9 @@
-package integration.com.github.mmolimar.vkitm.embedded
+package com.github.mmolimar.vkitm.embedded
 
 import java.io.File
 import java.util.Properties
 
-import integration.com.github.mmolimar.vkitm.utils.TestUtils
+import com.github.mmolimar.vkitm.utils.TestUtils
 import kafka.admin.AdminUtils
 import kafka.server.{KafkaConfig, KafkaServer}
 import kafka.utils.{CoreUtils, Logging, ZkUtils}

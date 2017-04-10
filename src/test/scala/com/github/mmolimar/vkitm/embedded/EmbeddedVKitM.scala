@@ -1,9 +1,9 @@
-package integration.com.github.mmolimar.vkitm.embedded
+package com.github.mmolimar.vkitm.embedded
 
 import java.util.Properties
 
 import com.github.mmolimar.vkitm.server.{VKitMConfig, VKitMServer}
-import integration.com.github.mmolimar.vkitm.utils.TestUtils
+import com.github.mmolimar.vkitm.utils.TestUtils
 import kafka.server.KafkaConfig
 import kafka.utils.Logging
 import org.apache.kafka.clients.producer.ProducerConfig

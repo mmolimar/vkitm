@@ -53,30 +53,21 @@ class EmbeddedKafkaCluster(zkConnection: String,
 
   def getBrokerList: String = actualPorts.map("localhost:" + _).mkString(",")
 
-  def createTopic(topic: String, partitionCount: Int) {
-    info(s"Creating topic $topic with partitions $partitionCount")
-    AdminUtils.createTopic(getZkUtils, topic, partitionCount, 1, new Properties)
-  }
-
-  def createTopics(topics: Seq[String]) {
-    info(s"Creating topics $topics")
-    for (topic <- topics) {
-      AdminUtils.createTopic(getZkUtils, topic, 2, 1, new Properties)
-    }
+  def createTopic(topic: String, numPartitions: Int = 1, replicationFactor: Int = 1) = {
+    info(s"Creating topic $topic")
+    AdminUtils.createTopic(getZkUtils, topic, numPartitions, replicationFactor)
   }
 
   def deleteTopic(topic: String) {
-    info(s"Deleting topics $topic")
+    info(s"Deleting topic $topic")
     AdminUtils.deleteTopic(getZkUtils, topic)
   }
 
-  def deleteTopics(topics: Seq[String]) {
-    topics.foreach(deleteTopic(_))
-  }
+  def deleteTopics(topics: Seq[String]) = topics.foreach(deleteTopic(_))
 
   def existTopic(topic: String): Boolean = AdminUtils.topicExists(getZkUtils, topic)
 
-  def createTopic(topic: String) = AdminUtils.createTopic(getZkUtils, topic, 1, 1)
+  def listTopics = getZkUtils.getAllTopics
 
   private def getZkUtils: ZkUtils = if (brokers.isEmpty) null else brokers.head.zkUtils
 

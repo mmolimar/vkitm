@@ -40,6 +40,8 @@ class EmbeddedVKitM(zkConnection: String,
 
   def getBrokerList: String = "localhost:" + getPort
 
+  def getServer: VKitMServer = vkitmServer
+
   override def toString: String = {
     val sb: StringBuilder = StringBuilder.newBuilder
     sb.append("VKitM{")

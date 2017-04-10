@@ -32,6 +32,7 @@ class EmbeddedZookeeperServer(private val port: Int = TestUtils.getAvailablePort
 
     TestUtils.deleteFile(snapshotDir)
     TestUtils.deleteFile(logDir)
+    TestUtils.deleteFile(logDir.getParentFile)
 
     info("Shutted down embedded Zookeeper")
   }

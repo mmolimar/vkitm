@@ -3,7 +3,7 @@ package com.github.mmolimar.vkitm.utils
 import java.util.Properties
 import java.util.concurrent.{CancellationException, TimeUnit, Future => JFuture}
 
-import com.typesafe.config.{Config, ConfigFactory, ConfigResolveOptions}
+import com.typesafe.config.Config
 import org.jboss.netty.util.{HashedWheelTimer, Timeout, TimerTask}
 
 import scala.concurrent.{Future, Promise}
@@ -40,9 +40,6 @@ object Helpers {
       promise.future
     }
   }
-
-  lazy implicit val config: Config = ConfigFactory.load(getClass.getClassLoader,
-    ConfigResolveOptions.defaults.setAllowUnresolved(true)).resolve
 
   implicit def propsFromConfig(config: Config): Properties = {
     import scala.collection.JavaConversions._

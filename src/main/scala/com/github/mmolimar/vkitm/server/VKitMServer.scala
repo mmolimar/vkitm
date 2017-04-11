@@ -20,9 +20,9 @@ object VKitMServer {
 }
 
 class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePrefix: Option[String] = None) extends Logging {
-  private val startupComplete = new AtomicBoolean(false)
-  private val isShuttingDown = new AtomicBoolean(false)
-  private val isStartingUp = new AtomicBoolean(false)
+  private[vkitm] val startupComplete = new AtomicBoolean(false)
+  private[vkitm] val isShuttingDown = new AtomicBoolean(false)
+  private[vkitm] val isStartingUp = new AtomicBoolean(false)
 
   private var shutdownLatch = new CountDownLatch(1)
 

@@ -1,20 +1,32 @@
 package com.github.mmolimar.vkitm
 
+import java.io.File
 import java.util.Date
 
 import com.github.mmolimar.vkitm.server.VKitMServerStartable
+import com.typesafe.config.ConfigFactory
 import kafka.utils.Logging
 
 object VKitM extends App with Logging {
 
-  import com.github.mmolimar.vkitm.utils.Helpers.config
+  if (args.length != 1) {
+    Console.err.println("Usage: VKitM <application.conf>")
+    System.exit(1)
+  }
+  if (!new File(args(0)).exists) {
+    Console.err.println("<application.conf> does not exist")
+    System.exit(1)
+  }
 
-  showBanner
-
+  var vkitmServerStartable: VKitMServerStartable = null
   try {
+    val config = ConfigFactory.load(ConfigFactory.parseFile(new File(args(0)))).resolve
     val serverProps = config.getObject("server").toConfig
     val producerProps = config.getObject("producer").toConfig
-    val vkitmServerStartable = VKitMServerStartable.fromProps(serverProps, producerProps)
+
+    showBanner
+
+    vkitmServerStartable = VKitMServerStartable.fromProps(serverProps, producerProps)
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
       override def run() = {
@@ -31,6 +43,9 @@ object VKitM extends App with Logging {
       System.exit(1)
   }
   System.exit(0)
+
+  //just for testing purposes
+  private[vkitm] def getVkitmServerStartable = vkitmServerStartable
 
   private def showBanner = {
     info(

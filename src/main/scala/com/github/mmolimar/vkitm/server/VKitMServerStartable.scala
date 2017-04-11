@@ -10,7 +10,7 @@ object VKitMServerStartable {
 }
 
 class VKitMServerStartable(val config: VKitMConfig) extends Logging {
-  private val server = new VKitMServer(config)
+  private[vkitm] val server = new VKitMServer(config)
 
   def startup() {
     try {

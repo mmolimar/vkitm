@@ -10,8 +10,8 @@ import org.apache.zookeeper.server.{ServerCnxnFactory, ZooKeeperServer}
 class EmbeddedZookeeperServer(private val port: Int = TestUtils.getAvailablePort,
                               private val tickTime: Int = 500) extends Logging {
 
-  private val snapshotDir: File = TestUtils.constructTempDir("embeeded-zk/snapshot")
-  private val logDir: File = TestUtils.constructTempDir("embeeded-zk/log")
+  private val snapshotDir: File = TestUtils.constructTempDir("snapshot")
+  private val logDir: File = TestUtils.constructTempDir("log")
   private val zookeeper: ZooKeeperServer = new ZooKeeperServer(snapshotDir, logDir, tickTime)
   private val factory: ServerCnxnFactory = ServerCnxnFactory.createFactory(new InetSocketAddress("localhost", port), 0)
 
@@ -32,7 +32,6 @@ class EmbeddedZookeeperServer(private val port: Int = TestUtils.getAvailablePort
 
     TestUtils.deleteFile(snapshotDir)
     TestUtils.deleteFile(logDir)
-    TestUtils.deleteFile(logDir.getParentFile)
 
     info("Shutted down embedded Zookeeper")
   }

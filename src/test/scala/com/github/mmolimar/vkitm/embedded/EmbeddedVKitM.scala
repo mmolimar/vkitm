@@ -26,7 +26,14 @@ class EmbeddedVKitM(zkConnection: String,
     val producerProps = new Properties
     producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList)
 
-    vkitmServer = new VKitMServer(VKitMConfig.fromProps(serverProps, producerProps))
+    val brokerPort = brokerList.split(":")(1)
+    val consumerProps = new Properties
+    consumerProps.setProperty(KafkaConfig.ZkConnectProp, zkConnection)
+    consumerProps.setProperty(KafkaConfig.HostNameProp, "localhost")
+    consumerProps.setProperty(KafkaConfig.PortProp, brokerPort)
+    consumerProps.setProperty(KafkaConfig.ListenersProp, "PLAINTEXT://localhost:" + brokerPort)
+
+    vkitmServer = new VKitMServer(VKitMConfig.fromProps(serverProps, producerProps, consumerProps))
     vkitmServer.startup()
 
     info("Started embedded VKitM server")

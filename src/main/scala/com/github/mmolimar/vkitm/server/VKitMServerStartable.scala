@@ -4,8 +4,8 @@ import com.typesafe.config.Config
 import kafka.utils.Logging
 
 object VKitMServerStartable {
-  def fromProps(serverProps: Config, producerProps: Config) = {
-    new VKitMServerStartable(VKitMConfig.fromProps(serverProps, producerProps))
+  def fromProps(serverConfig: Config, producerConfig: Config, consumerConfig: Config) = {
+    new VKitMServerStartable(VKitMConfig.fromProps(serverConfig, producerConfig, consumerConfig))
   }
 }
 

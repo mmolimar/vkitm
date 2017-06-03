@@ -20,7 +20,7 @@ class VKitMRequestHandler(id: Int,
         } while (req == null)
 
         if (req eq RequestChannel.AllDone) {
-          debug("VKitM request handler %d on virtual broker %s received shut down command".format(
+          debug("VKitM request handler %d on virtual broker %s received shutdown command".format(
             id, vkId))
           return
         }
@@ -57,6 +57,6 @@ class VKitMRequestHandlerPool(val vkId: Int,
       handler.shutdown
     for (thread <- threads)
       thread.join
-    info("shut down completely")
+    info("shutdown completely")
   }
 }

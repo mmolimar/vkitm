@@ -27,7 +27,8 @@ object Cache {
       maxSize,
       new ProducerRemovalListener[ClientProducerRequest, KafkaProducer[Array[Byte], Array[Byte]]],
       loader = (cpr: ClientProducerRequest) => {
-        val props = cpr.props.getOrElse(new Properties)
+        val props = new Properties
+        props.putAll(cpr.props)
         props.put(ProducerConfig.CLIENT_ID_CONFIG, cpr.clientId)
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cpr.brokerList)
         props.put(ProducerConfig.ACKS_CONFIG, cpr.acks.toString)

@@ -9,13 +9,13 @@ object VKitMConfig {
 
   import com.github.mmolimar.vkitm.utils.Helpers.propsFromConfig
 
-  def fromProps(serverProps: Config, producerProps: Config): VKitMConfig =
-    new VKitMConfig(KafkaConfig.fromProps(serverProps), producerProps)
+  def fromProps(serverProps: Config, producerProps: Config, consumerProps: Config): VKitMConfig =
+    new VKitMConfig(KafkaConfig.fromProps(serverProps), producerProps, consumerProps)
 
-  def fromProps(serverProps: Properties, producerProps: Properties): VKitMConfig =
-    new VKitMConfig(KafkaConfig.fromProps(serverProps), producerProps)
+  def fromProps(serverProps: Properties, producerProps: Properties, consumerProps: Properties): VKitMConfig =
+    new VKitMConfig(KafkaConfig.fromProps(serverProps), producerProps, consumerProps)
 }
 
-class VKitMConfig(val serverConfig: KafkaConfig, val producerConfig: Properties) {
+private[server] class VKitMConfig(val serverConfig: KafkaConfig, val producerProps: Properties, val consumerProps: Properties) {
 
 }

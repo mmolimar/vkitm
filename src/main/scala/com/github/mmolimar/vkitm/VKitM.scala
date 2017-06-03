@@ -23,10 +23,11 @@ object VKitM extends App with Logging {
     val config = ConfigFactory.load(ConfigFactory.parseFile(new File(args(0)))).resolve
     val serverProps = config.getObject("server").toConfig
     val producerProps = config.getObject("producer").toConfig
+    val consumerProps = config.getObject("consumer").toConfig
 
     showBanner
 
-    vkitmServerStartable = VKitMServerStartable.fromProps(serverProps, producerProps)
+    vkitmServerStartable = VKitMServerStartable.fromProps(serverProps, producerProps, consumerProps)
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
       override def run() = {

@@ -131,7 +131,7 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
       info("shutting down")
 
       if (isStartingUp.get)
-        throw new IllegalStateException("VKitM server is still starting up, cannot shut down!")
+        throw new IllegalStateException("VKitM server is still starting up, cannot shutdown!")
 
       val canShutdown = isShuttingDown.compareAndSet(false, true)
       if (canShutdown && shutdownLatch.getCount > 0) {
@@ -153,7 +153,7 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
         isShuttingDown.set(false)
         AppInfoParser.unregisterAppInfo(jmxPrefix, config.serverConfig.brokerId.toString)
         shutdownLatch.countDown()
-        info("shut down completed")
+        info("shutdown completed")
       }
     }
     catch {

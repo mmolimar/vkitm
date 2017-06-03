@@ -12,6 +12,7 @@ import kafka.common._
 import kafka.message.Message
 import kafka.network.RequestChannel.Response
 import kafka.network._
+import kafka.server.KafkaConfig
 import kafka.utils._
 import org.apache.kafka.clients.producer.{ProducerRecord, RecordMetadata}
 import org.apache.kafka.clients.{ClientRequest, ClientResponse}
@@ -39,6 +40,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   private val producerCache = Cache.forProducers()
   private val clientCache = Cache.forClients()
+  private val consumerConfig = KafkaConfig.fromProps(config.consumerProps)
 
   this.logIdent = "[VKitMApi-%d] ".format(config.serverConfig.brokerId)
 
@@ -124,7 +126,7 @@ class VKitMApis(val requestChannel: RequestChannel,
           }
         }
         val record = new ProducerRecord[Array[Byte], Array[Byte]](topicPartition.topic(), key, value)
-        val entry = ClientProducerRequest(request.header.clientId, getBrokerList, produceRequest.acks)
+        val entry = ClientProducerRequest(request.header.clientId, getBrokerList, produceRequest.acks)(config.producerProps)
         producerCache.getAndMaybePut(entry).send(record).asScala
 
       }.toSeq
@@ -165,7 +167,7 @@ class VKitMApis(val requestChannel: RequestChannel,
       new util.LinkedHashMap[TopicPartition, FetchRequest.PartitionData](fetchData.asJava))
 
     val header = new RequestHeader(ApiKeys.FETCH.id, sFetchRequest.versionId, sFetchRequest.clientId, sFetchRequest.correlationId)
-    val ncr = NetworkClientRequest(sFetchRequest.clientId + UUID.randomUUID(), metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+    val ncr = NetworkClientRequest(sFetchRequest.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(header, request,
       jFetchRequest, ncr, request.connectionId,
@@ -175,7 +177,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleListOffsetRequest(request: RequestChannel.Request) {
     val listOffsetRequest = request.body.asInstanceOf[ListOffsetRequest]
-    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
       listOffsetRequest, ncr, request.connectionId,
@@ -234,7 +236,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleOffsetCommitRequest(request: RequestChannel.Request) {
     val offsetCommitRequest = request.body.asInstanceOf[OffsetCommitRequest]
-    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
       offsetCommitRequest, ncr, request.connectionId,
@@ -244,7 +246,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleOffsetFetchRequest(request: RequestChannel.Request) {
     val offsetFetchRequest = request.body.asInstanceOf[OffsetFetchRequest]
-    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
       offsetFetchRequest, ncr, request.connectionId,
@@ -254,7 +256,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleGroupCoordinatorRequest(request: RequestChannel.Request) {
     val groupCoordinatorRequest = request.body.asInstanceOf[GroupCoordinatorRequest]
-    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
       groupCoordinatorRequest, ncr, request.connectionId,
@@ -268,7 +270,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleJoinGroupRequest(request: RequestChannel.Request) {
     val joinGroupRequest = request.body.asInstanceOf[JoinGroupRequest]
-    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId + UUID.randomUUID())(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
       joinGroupRequest, ncr, request.connectionId,
@@ -278,7 +280,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleHeartbeatRequest(request: RequestChannel.Request) {
     val heartbeatRequest = request.body.asInstanceOf[HeartbeatRequest]
-    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
       heartbeatRequest, ncr, request.connectionId,
@@ -287,7 +289,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleLeaveGroupRequest(request: RequestChannel.Request) {
     val leaveGroupRequest = request.body.asInstanceOf[LeaveGroupRequest]
-    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
       leaveGroupRequest, ncr, request.connectionId,
@@ -296,7 +298,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
   def handleSyncGroupRequest(request: RequestChannel.Request) {
     val syncGroupRequest = request.body.asInstanceOf[SyncGroupRequest]
-    val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
       syncGroupRequest, ncr, request.connectionId,
@@ -343,7 +345,7 @@ class VKitMApis(val requestChannel: RequestChannel,
       val node = metadataCache.getActualAliveNodes.head
       val send = new RequestSend(node.idString, request.header, request.body.toStruct)
       val clientRequest = new ClientRequest(time.milliseconds, true, send, null)
-      val ncr = NetworkClientRequest(request.header.clientId, metadataCache.getMetadataUpdater, config.serverConfig, metrics)
+      val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
       val networkClient = clientCache.getAndMaybePut(ncr)
       try {

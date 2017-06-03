@@ -11,10 +11,10 @@ private[cache] trait CacheEntry {
 
 case class ClientProducerRequest(clientId: String,
                                  brokerList: String,
-                                 acks: Short,
-                                 props: Option[Properties] = None) extends CacheEntry
+                                 acks: Short)
+                                (val props: Properties = new Properties) extends CacheEntry
 
-case class NetworkClientRequest(clientId: String,
-                                metadataUpdater: ManualMetadataUpdater,
-                                config: KafkaConfig,
-                                metrics: Metrics) extends CacheEntry
+case class NetworkClientRequest(clientId: String)
+                               (val metadataUpdater: ManualMetadataUpdater,
+                                val config: KafkaConfig,
+                                val metrics: Metrics) extends CacheEntry

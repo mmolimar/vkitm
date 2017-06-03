@@ -26,14 +26,16 @@ responsability.
 ## Motivation
 
 There are multiple Kafka proxies out there but most of them are HTTP REST based. A well-known 
-REST Proxy is [this](https://github.com/confluentinc/kafka-rest).
+REST Proxy is [this one](https://github.com/confluentinc/kafka-rest).
 
 However, most of them lack of some of the following features I'd like to provide in VKitM:
 
-- Use the native Kafka protocol directly, improving the performance.
-- To be able to modify the messages from the clients on the fly when we cannot do it in the client itself
-  (due to business cases or whatever) including [interceptors](https://cwiki.apache.org/confluence/display/KAFKA/KIP-42%3A+Add+Producer+and+Consumer+Interceptors).
-- Define custom ACLs to complement those that already exist in the Kafka Cluster.
+- Use the native Kafka protocol directly, **improving the performance**.
+- To be able to **modify the messages from the clients on the fly** when we cannot do it in the client itself
+  (due to business cases or whatever) including **[interceptors](https://cwiki.apache.org/confluence/display/KAFKA/KIP-42%3A+Add+Producer+and+Consumer+Interceptors)**.
+- Define **custom ACLs** to complement those that already exist in the Kafka Cluster.
+- Change the **kind of protocol** in your clients (secured or not). I.e.: using SSL connection from the clients to VKitM
+  and from the VKitM to Kafka brokers in plaintext (or vice versa) or even change the certificates they use.
 
 ## Getting started
 

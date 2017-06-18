@@ -57,6 +57,7 @@ jar {
                 'Class-Path': configurations.runtime.collect { it.getName() }.join(' ')
         )
     }
+    exclude('*.conf')
 }
 
 jacocoTestReport {

@@ -26,7 +26,7 @@ class VKitMRequestHandler(id: Int,
         }
         req.requestDequeueTimeMs = SystemTime.milliseconds
 
-        info("VKitM request handler %d on virtual broker %s handling request %s".format(id, vkId, req.requestId))
+        debug("VKitM request handler %d on virtual broker %s handling request %s".format(id, vkId, req.requestId))
         apis.handle(req)
       } catch {
         case e: Throwable => error("Exception when handling request", e)

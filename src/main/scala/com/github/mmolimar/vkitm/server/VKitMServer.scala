@@ -6,12 +6,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kafka.cluster.Broker
 import kafka.common.KafkaException
 import kafka.network.SocketServer
+import kafka.security.CredentialProvider
 import kafka.server._
 import kafka.utils._
-import org.apache.kafka.common.metrics.{JmxReporter, Metrics, _}
-import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.metrics._
 import org.apache.kafka.common.security.JaasUtils
-import org.apache.kafka.common.utils.AppInfoParser
+import org.apache.kafka.common.utils.{AppInfoParser, Time}
+
+import scala.collection.JavaConverters._
 
 object VKitMServer {
 
@@ -19,7 +21,7 @@ object VKitMServer {
 
 }
 
-class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePrefix: Option[String] = None) extends Logging {
+class VKitMServer(val config: VKitMConfig, time: Time = Time.SYSTEM, threadNamePrefix: Option[String] = None) extends Logging {
   private[vkitm] val startupComplete = new AtomicBoolean(false)
   private[vkitm] val isShuttingDown = new AtomicBoolean(false)
   private[vkitm] val isStartingUp = new AtomicBoolean(false)
@@ -27,10 +29,9 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
   private var shutdownLatch = new CountDownLatch(1)
 
   private val jmxPrefix: String = "vkitm.server"
-  private val reporters: java.util.List[MetricsReporter] = config.serverConfig.metricReporterClasses
-  reporters.add(new JmxReporter(jmxPrefix))
+  private val reporters = config.serverConfig.getConfiguredInstances(KafkaConfig.MetricReporterClassesProp, classOf[MetricsReporter],
+    Map[String, AnyRef](KafkaConfig.BrokerIdProp -> (config.serverConfig.brokerId.toString)).asJava)
 
-  private implicit val vkitmMetricsTime: org.apache.kafka.common.utils.Time = new org.apache.kafka.common.utils.SystemTime()
   var metrics: Metrics = null
 
   private val metricConfig: MetricConfig = new MetricConfig()
@@ -39,9 +40,11 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
 
   var apis: VKitMApis = null
   var socketServer: SocketServer = null
+  var quotaManagers: QuotaFactory.QuotaManagers = null
   var metadataCache: FakedMetadataCache = null
   var requestHandlerPool: VKitMRequestHandlerPool = null
   var fakedMetadataManager: MetadataManager = null
+  var credentialProvider: CredentialProvider = null
 
   val vkitmScheduler = new KafkaScheduler(config.serverConfig.backgroundThreads, "vkitm-scheduler-")
 
@@ -63,7 +66,7 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
       val canStartup = isStartingUp.compareAndSet(false, true)
       if (!canStartup) return
 
-      metrics = new Metrics(metricConfig, reporters, vkitmMetricsTime, true)
+      metrics = new Metrics(metricConfig, reporters, time, true)
 
       vkitmScheduler.startup()
 
@@ -75,19 +78,22 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
       config.serverConfig.brokerId = VKitMServer.DEFAULT_VKITM_BROKER_ID
       this.logIdent = "[VKitM Server], "
 
-      metadataCache = new FakedMetadataCache(config.serverConfig.brokerId)
+      quotaManagers = QuotaFactory.instantiate(config.serverConfig, metrics, time)
 
-      socketServer = new SocketServer(config.serverConfig, metrics, vkitmMetricsTime)
+      metadataCache = new FakedMetadataCache(config.serverConfig.brokerId)
+      credentialProvider = new CredentialProvider(config.serverConfig.saslEnabledMechanisms)
+
+      socketServer = new SocketServer(config.serverConfig, metrics, time, credentialProvider)
       socketServer.startup()
 
       val virtualBroker = new Broker(VKitMServer.DEFAULT_VKITM_BROKER_ID, config.serverConfig.advertisedListeners, config.serverConfig.rack)
       fakedMetadataManager = new MetadataManager(config.serverConfig.brokerId, zkUtils, Seq(virtualBroker), metadataCache)
       fakedMetadataManager.startup()
 
-      apis = new VKitMApis(socketServer.requestChannel, zkUtils, config, metadataCache, metrics, clusterId)
+      apis = new VKitMApis(socketServer.requestChannel, zkUtils, config, metadataCache, metrics, quotaManagers, clusterId, time)
 
       requestHandlerPool = new VKitMRequestHandlerPool(config.serverConfig.brokerId,
-        socketServer.requestChannel, apis, config.serverConfig.numIoThreads)
+        socketServer.requestChannel, apis, time, config.serverConfig.numIoThreads)
 
 
       shutdownLatch = new CountDownLatch(1)
@@ -166,5 +172,4 @@ class VKitMServer(val config: VKitMConfig, time: Time = SystemTime, threadNamePr
 
   def awaitShutdown(): Unit = shutdownLatch.await()
 
-  def boundPort(protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT): Int = socketServer.boundPort(protocol)
 }

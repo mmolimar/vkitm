@@ -4,10 +4,12 @@ import java.util.Properties
 import java.util.concurrent.TimeUnit
 
 import com.google.common.cache.{CacheBuilder, CacheLoader, RemovalListener, RemovalNotification}
-import org.apache.kafka.clients.NetworkClient
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig}
+import org.apache.kafka.clients.{ApiVersions, NetworkClient}
 import org.apache.kafka.common.network._
+import org.apache.kafka.common.security.JaasContext
 import org.apache.kafka.common.serialization.ByteArraySerializer
+import org.apache.kafka.common.utils.Time
 
 import scala.collection.JavaConverters._
 
@@ -45,14 +47,16 @@ object Cache {
       maxSize,
       new ClientRemovalListener[NetworkClientRequest, NetworkClient],
       loader = (ncr: NetworkClientRequest) => {
-        val time = new org.apache.kafka.common.utils.SystemTime()
-        val channelBuilder = ChannelBuilders.create(
+        val time = Time.SYSTEM
+
+        val channelBuilder = ChannelBuilders.clientChannelBuilder(
           ncr.config.interBrokerSecurityProtocol,
-          Mode.CLIENT,
-          LoginType.SERVER,
-          ncr.config.values,
+          JaasContext.Type.CLIENT,
+          ncr.config,
+          ncr.config.advertisedListeners.head.listenerName,
           ncr.config.saslMechanismInterBrokerProtocol,
           ncr.config.saslInterBrokerHandshakeRequestEnable)
+
         val selector = new Selector(
           ncr.config.connectionsMaxIdleMs,
           ncr.metrics,
@@ -60,16 +64,20 @@ object Cache {
           NETWORK_CLIENT_METRICS_PREFIX + ncr.clientId,
           channelBuilder
         )
+
         new NetworkClient(
           selector,
           ncr.metadataUpdater,
           ncr.config.brokerId.toString,
           100,
           0,
+          0,
           Selectable.USE_DEFAULT_BUFFER_SIZE,
           Selectable.USE_DEFAULT_BUFFER_SIZE,
           ncr.config.requestTimeoutMs,
-          time)
+          time,
+          false,
+          new ApiVersions)
       })
   }
 }

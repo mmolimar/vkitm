@@ -164,7 +164,7 @@ class MetadataManager(vkId: Int,
     }.toSet
 
     val leaderAndIsrInfo: mutable.Map[TopicAndPartition, LeaderIsrAndControllerEpoch] =
-      zkUtils.getPartitionLeaderAndIsrForTopics(zkUtils.zkClient, topicAndPartitions)
+      zkUtils.getPartitionLeaderAndIsrForTopics(topicAndPartitions)
 
     leaderAndIsrInfo.map { info =>
       (info._1.topic, mutable.Map[Int, PartitionStateInfo](info._1.partition -> getPartitionStateInfo(info._2)))
@@ -179,7 +179,7 @@ class MetadataManager(vkId: Int,
         leaderIsrAndControllerEpoch.leaderAndIsr.leaderEpoch,
         List(vkId).map(Integer.valueOf).asJava,
         leaderIsrAndControllerEpoch.leaderAndIsr.zkVersion,
-        Set(vkId).map(Integer.valueOf).asJava))
+        Set(vkId).map(Integer.valueOf).toList.asJava))
   }
 
   private def partitionStateToPartitionStateInfo(partitionState: PartitionState): PartitionStateInfo = {

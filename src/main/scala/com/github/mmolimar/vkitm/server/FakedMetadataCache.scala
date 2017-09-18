@@ -4,11 +4,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
 
 import kafka.api.PartitionStateInfo
 import kafka.cluster.Broker
-import kafka.common.{BrokerEndPointNotAvailableException, Topic, TopicAndPartition}
+import kafka.common.{BrokerEndPointNotAvailableException, TopicAndPartition}
 import kafka.utils.CoreUtils._
 import kafka.utils.Logging
 import org.apache.kafka.clients.ManualMetadataUpdater
 import org.apache.kafka.common.Node
+import org.apache.kafka.common.internals.Topic
 import org.apache.kafka.common.protocol.{Errors, SecurityProtocol}
 import org.apache.kafka.common.requests.MetadataResponse
 
@@ -55,6 +56,7 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
       }.toSeq
     }
   }
+
   def getActualAliveBrokers: Seq[Broker] = {
     inReadLock(vkMetadataLock) {
       actualAliveBrokers.values.toBuffer
@@ -182,9 +184,9 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
 
   private def nodeByProtocol(broker: Broker): collection.Map[SecurityProtocol, Node] = {
     broker.endPoints.map { endPoint =>
-      val brokerEndPoint = broker.getBrokerEndPoint(endPoint._1)
-      (endPoint._1, new Node(brokerEndPoint.id, brokerEndPoint.host, brokerEndPoint.port))
-    }
+      val brokerEndPoint = broker.getBrokerEndPoint(endPoint.listenerName)
+      (endPoint.securityProtocol, new Node(brokerEndPoint.id, brokerEndPoint.host, brokerEndPoint.port))
+    }.toMap
   }
 
   private[server] class FakedMetadataUpdater extends ManualMetadataUpdater {

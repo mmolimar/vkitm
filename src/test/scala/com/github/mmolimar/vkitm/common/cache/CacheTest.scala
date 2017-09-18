@@ -5,7 +5,7 @@ import java.util.{Properties, UUID}
 import com.google.common.util.concurrent.UncheckedExecutionException
 import kafka.server.KafkaConfig
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig}
-import org.apache.kafka.clients.{ManualMetadataUpdater, NetworkClient}
+import org.apache.kafka.clients.{ApiVersions, ManualMetadataUpdater, NetworkClient}
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.network.Selectable
 import org.apache.kafka.common.serialization.ByteArraySerializer
@@ -37,7 +37,10 @@ class CacheTest extends WordSpec with MockFactory {
       val cache = Cache.forClients(maxSize = maxSize)
       val config = new KafkaConfig(Map(KafkaConfig.ZkConnectProp -> "zkhost:2181").asJava, false)
       val ncr = NetworkClientRequest(UUID.randomUUID().toString)(mock[ManualMetadataUpdater], config, new Metrics())
-      val networkClient = new NetworkClient(stub[Selectable], mock[ManualMetadataUpdater], "test-client", 0, 0, 0, 0, 0, mock[Time])
+      val networkClient = new NetworkClient(stub[Selectable], mock[ManualMetadataUpdater], "test-client",
+        100, 0, 0, Selectable.USE_DEFAULT_BUFFER_SIZE, Selectable.USE_DEFAULT_BUFFER_SIZE,
+        ncr.config.requestTimeoutMs, mock[Time], false, new ApiVersions)
+
       cache.put(ncr, networkClient)
 
       "produce an UncheckedExecutionException when retrieving a bad key record" in {

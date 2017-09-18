@@ -4,9 +4,9 @@ import java.util.concurrent.TimeUnit
 
 import com.github.mmolimar.vkitm.embedded.{EmbeddedKafkaCluster, EmbeddedVKitM, EmbeddedZookeeperServer}
 import com.github.mmolimar.vkitm.utils.TestUtils
-import kafka.common.Topic
 import org.apache.kafka.clients.consumer.{ConsumerRebalanceListener, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.clients.producer.ProducerRecord
+import org.apache.kafka.common.internals.Topic
 import org.apache.kafka.common.protocol.{Errors, SecurityProtocol}
 import org.apache.kafka.common.requests.MetadataResponse
 import org.apache.kafka.common.{Node, TopicPartition}

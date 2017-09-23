@@ -59,7 +59,7 @@ class VKitMServer(val config: VKitMConfig, time: Time = Time.SYSTEM, threadNameP
       info("starting")
 
       if (isShuttingDown.get)
-        throw new IllegalStateException("Kafka server is still shutting down, cannot re-start!")
+        throw new IllegalStateException("VKitM server is still shutting down, cannot re-start!")
 
       if (startupComplete.get) return
 

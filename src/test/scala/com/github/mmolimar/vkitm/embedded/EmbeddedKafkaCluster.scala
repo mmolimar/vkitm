@@ -12,9 +12,8 @@ class EmbeddedKafkaCluster(zkConnection: String,
                            ports: Seq[Int] = Seq(TestUtils.getAvailablePort),
                            baseProps: Properties = new Properties) extends Logging {
 
-  private val actualPorts: Seq[Int] = ports.map { port =>
-    resolvePort(port)
-  }
+  private val actualPorts: Seq[Int] = ports.map(resolvePort(_))
+
   private var brokers: Seq[KafkaServer] = Seq.empty
   private var logDirs: Seq[File] = Seq.empty
 
@@ -29,11 +28,14 @@ class EmbeddedKafkaCluster(zkConnection: String,
       properties.setProperty(KafkaConfig.ZkSyncTimeMsProp, i.toString)
       properties.setProperty(KafkaConfig.BrokerIdProp, (i + 1).toString)
       properties.setProperty(KafkaConfig.HostNameProp, "localhost")
+      properties.setProperty(KafkaConfig.AdvertisedHostNameProp, "localhost")
       properties.setProperty(KafkaConfig.PortProp, port.toString)
+      properties.setProperty(KafkaConfig.AdvertisedPortProp, port.toString)
       properties.setProperty(KafkaConfig.LogDirProp, logDir.getAbsolutePath)
       properties.setProperty(KafkaConfig.NumPartitionsProp, 1.toString)
       properties.setProperty(KafkaConfig.AutoCreateTopicsEnableProp, true.toString)
       properties.setProperty(KafkaConfig.LogFlushIntervalMessagesProp, 1.toString)
+      properties.setProperty(KafkaConfig.OffsetsTopicReplicationFactorProp, 1.toString)
 
       info(s"Local directory for broker ID ${i + 1} is ${logDir.getAbsolutePath}")
 

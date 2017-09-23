@@ -72,7 +72,7 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
         vkitmConsumer.subscribe(Seq(currentTopic).asJava, consumerRebalanceListener(vkitmConsumer))
         vkitmConsumer.subscription().contains(currentTopic) should be(true)
 
-        val records: ConsumerRecords[Array[Byte], Array[Byte]] = vkitmConsumer.poll(1000)
+        val records: ConsumerRecords[Array[Byte], Array[Byte]] = vkitmConsumer.poll(10000)
         records.count should be(numMessages)
         records.asScala.foreach { record =>
           record.topic should be eq currentTopic
@@ -97,7 +97,7 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
         kafkaConsumer.subscribe(Seq(currentTopic).asJava, consumerRebalanceListener(kafkaConsumer))
         kafkaConsumer.subscription().contains(currentTopic) should be(true)
 
-        val records: ConsumerRecords[Array[Byte], Array[Byte]] = kafkaConsumer.poll(1000)
+        val records: ConsumerRecords[Array[Byte], Array[Byte]] = kafkaConsumer.poll(10000)
         records.count should be(numMessages)
         records.asScala.foreach { record =>
           record.topic should be eq currentTopic
@@ -129,7 +129,7 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
         vkitmConsumer.subscribe(Seq(currentTopic).asJava, consumerRebalanceListener(vkitmConsumer))
         vkitmConsumer.subscription().contains(currentTopic) should be(true)
 
-        val records: ConsumerRecords[Array[Byte], Array[Byte]] = vkitmConsumer.poll(1000)
+        val records: ConsumerRecords[Array[Byte], Array[Byte]] = vkitmConsumer.poll(10000)
         records.count should be(numMessages)
         records.asScala.foreach { record =>
           record.topic should be eq currentTopic

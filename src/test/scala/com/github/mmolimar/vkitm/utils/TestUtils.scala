@@ -65,6 +65,10 @@ object TestUtils {
     props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList)
     props.put(ProducerConfig.ACKS_CONFIG, "all")
     props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, compression)
+    props.put(ProducerConfig.LINGER_MS_CONFIG, "0") //ensure writes are synchronous
+    props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, Long.MaxValue.toString)
+    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
+    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer")
 
     new KafkaProducer(props, new ByteArraySerializer, new ByteArraySerializer)
   }
@@ -74,6 +78,11 @@ object TestUtils {
     props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList)
     props.put(ConsumerConfig.CLIENT_ID_CONFIG, "test-client-" + UUID.randomUUID)
     props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId)
+    props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true")
+    props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest")
+    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArrayDeserializer")
+    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArrayDeserializer")
+    props.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, "0") //ensure we have no temporal batching
 
     new KafkaConsumer(props, new ByteArrayDeserializer, new ByteArrayDeserializer)
   }

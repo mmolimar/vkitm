@@ -58,6 +58,7 @@ class VKitMApis(val requestChannel: RequestChannel,
         case ApiKeys.METADATA => handleTopicMetadataRequest(request)
         case ApiKeys.FIND_COORDINATOR => handleFindCoordinatorRequest(request)
         case ApiKeys.JOIN_GROUP => handleJoinGroupRequest(request)
+        case ApiKeys.HEARTBEAT => handleHeartbeatRequest(request)
         case ApiKeys.SYNC_GROUP => handleSyncGroupRequest(request)
         case ApiKeys.API_VERSIONS => handleApiVersionsRequest(request)
         case requestId => throw new KafkaException("Unknown api code " + requestId)
@@ -178,8 +179,8 @@ class VKitMApis(val requestChannel: RequestChannel,
   }
 
   def handleFetchRequest(request: RequestChannel.Request) {
-    val fetchRequest = request.body[FetchRequest]
 
+    val fetchRequest = request.body[FetchRequest]
     val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
@@ -257,11 +258,20 @@ class VKitMApis(val requestChannel: RequestChannel,
       })
   }
 
+  def handleHeartbeatRequest(request: RequestChannel.Request) {
+
+    val heartbeatRequest = request.body[HeartbeatRequest]
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
+
+    sendNetworkClientRequest(request.header, request,
+      heartbeatRequest, ncr, request.connectionId, request.header.correlationId, clientResponse => {
+        clientResponse.responseBody.asInstanceOf[JoinGroupResponse]
+      })
+  }
+
   def handleSyncGroupRequest(request: RequestChannel.Request) {
 
     val syncGroupRequest = request.body[SyncGroupRequest]
-    val fakedSyncGroupRequest = new SyncGroupRequest.Builder(syncGroupRequest.groupId, syncGroupRequest.generationId,
-      metadataCache.getActualAliveNodes.head.idString, syncGroupRequest.groupAssignment).build(request.header.apiVersion)
     val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
 
     sendNetworkClientRequest(request.header, request,
@@ -281,6 +291,12 @@ class VKitMApis(val requestChannel: RequestChannel,
     }
 
     sendResponseMaybeThrottle(request, request.header.clientId, sendResponseCallback)
+
+  }
+
+  def close() {
+    quotas.shutdown
+    info("Shutdown complete.")
   }
 
   private def getTopicMetadata(request: RequestChannel.Request,
@@ -340,11 +356,6 @@ class VKitMApis(val requestChannel: RequestChannel,
         case ae: ApiException => errorResponse(ae)
       }
     }
-  }
-
-  def close() {
-    quotas.shutdown
-    info("Shutdown complete.")
   }
 
   private def sendNetworkClientRequest(header: RequestHeader,

@@ -60,6 +60,7 @@ class VKitMApis(val requestChannel: RequestChannel,
         case ApiKeys.FIND_COORDINATOR => handleFindCoordinatorRequest(request)
         case ApiKeys.JOIN_GROUP => handleJoinGroupRequest(request)
         case ApiKeys.HEARTBEAT => handleHeartbeatRequest(request)
+        case ApiKeys.LEAVE_GROUP => handleLeaveGroupRequest(request)
         case ApiKeys.SYNC_GROUP => handleSyncGroupRequest(request)
         case ApiKeys.API_VERSIONS => handleApiVersionsRequest(request)
         case ApiKeys.CREATE_TOPICS => handleCreateTopicsRequest(request)
@@ -269,6 +270,17 @@ class VKitMApis(val requestChannel: RequestChannel,
     sendNetworkClientRequest(request.header, request,
       heartbeatRequest, ncr, request.connectionId, request.header.correlationId, clientResponse => {
         clientResponse.responseBody.asInstanceOf[JoinGroupResponse]
+      })
+  }
+
+  def handleLeaveGroupRequest(request: RequestChannel.Request) {
+
+    val leaveGroupRequest = request.body[LeaveGroupRequest]
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
+
+    sendNetworkClientRequest(request.header, request,
+      leaveGroupRequest, ncr, request.connectionId, request.header.correlationId, clientResponse => {
+        clientResponse.responseBody.asInstanceOf[LeaveGroupResponse]
       })
   }
 

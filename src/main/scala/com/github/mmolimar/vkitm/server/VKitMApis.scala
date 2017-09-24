@@ -20,6 +20,7 @@ import org.apache.kafka.common.internals.Topic
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.protocol.{ApiKeys, Errors, Protocol, SecurityProtocol}
 import org.apache.kafka.common.record.MemoryRecords
+import org.apache.kafka.common.requests.CreateTopicsRequest.TopicDetails
 import org.apache.kafka.common.requests.MetadataResponse.{PartitionMetadata, TopicMetadata}
 import org.apache.kafka.common.requests.ProduceResponse.PartitionResponse
 import org.apache.kafka.common.requests._
@@ -61,6 +62,8 @@ class VKitMApis(val requestChannel: RequestChannel,
         case ApiKeys.HEARTBEAT => handleHeartbeatRequest(request)
         case ApiKeys.SYNC_GROUP => handleSyncGroupRequest(request)
         case ApiKeys.API_VERSIONS => handleApiVersionsRequest(request)
+        case ApiKeys.CREATE_TOPICS => handleCreateTopicsRequest(request)
+        case ApiKeys.DELETE_TOPICS => handleDeleteTopicsRequest(request)
         case requestId => throw new KafkaException("Unknown api code " + requestId)
       }
     } catch {
@@ -291,6 +294,34 @@ class VKitMApis(val requestChannel: RequestChannel,
     }
 
     sendResponseMaybeThrottle(request, request.header.clientId, sendResponseCallback)
+
+  }
+
+  def handleCreateTopicsRequest(request: RequestChannel.Request) = {
+    val createTopicsRequest = request.body[CreateTopicsRequest]
+    val fakedTopics = createTopicsRequest.topics.asScala.mapValues(td => {
+      new TopicDetails(td.numPartitions, td.replicationFactor, td.configs)
+    })
+    val fakedCreateTopicsRequest = new CreateTopicsRequest.Builder(fakedTopics.asJava,
+      createTopicsRequest.timeout, createTopicsRequest.validateOnly).build(createTopicsRequest.version)
+
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
+
+    sendNetworkClientRequest(request.header, request,
+      fakedCreateTopicsRequest, ncr, request.connectionId, request.header.correlationId, clientResponse => {
+        clientResponse.responseBody.asInstanceOf[CreateTopicsResponse]
+      })
+  }
+
+  def handleDeleteTopicsRequest(request: RequestChannel.Request) = {
+
+    val deleteTopicRequest = request.body[DeleteTopicsRequest]
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
+
+    sendNetworkClientRequest(request.header, request,
+      deleteTopicRequest, ncr, request.connectionId, request.header.correlationId, clientResponse => {
+        clientResponse.responseBody.asInstanceOf[DeleteTopicsResponse]
+      })
 
   }
 

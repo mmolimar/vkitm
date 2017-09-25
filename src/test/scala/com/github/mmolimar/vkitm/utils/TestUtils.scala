@@ -3,8 +3,10 @@ package com.github.mmolimar.vkitm.utils
 import java.io.{File, FileNotFoundException, IOException}
 import java.net.{InetSocketAddress, ServerSocket}
 import java.nio.channels.ServerSocketChannel
+import java.util
 import java.util.{Properties, Random, UUID}
 
+import org.apache.kafka.clients.admin.{AdminClient, AdminClientConfig}
 import org.apache.kafka.clients.consumer.{ConsumerConfig, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig}
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, ByteArraySerializer}
@@ -85,6 +87,13 @@ object TestUtils {
     props.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, "0") //ensure we have no temporal batching
 
     new KafkaConsumer(props, new ByteArrayDeserializer, new ByteArrayDeserializer)
+  }
+
+  def buildAdminClient(brokerList: String): AdminClient = {
+    val config = new util.HashMap[String, Object]
+    config.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList)
+
+    AdminClient.create(config)
   }
 
   @throws[FileNotFoundException]

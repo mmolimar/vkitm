@@ -1,9 +1,11 @@
 package com.github.mmolimar.vkitm.server
 
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 import com.github.mmolimar.vkitm.embedded.{EmbeddedKafkaCluster, EmbeddedVKitM, EmbeddedZookeeperServer}
 import com.github.mmolimar.vkitm.utils.TestUtils
+import org.apache.kafka.clients.admin.{CreateTopicsOptions, NewTopic}
 import org.apache.kafka.clients.consumer.{ConsumerRebalanceListener, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.internals.Topic
@@ -27,9 +29,11 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
 
   val kafkaProducer = TestUtils.buildProducer(kafkaCluster.getBrokerList)
   val kafkaConsumer = TestUtils.buildConsumer(kafkaCluster.getBrokerList)
+  val vkitmAdminClient = TestUtils.buildAdminClient(vkitmServer.getBrokerList)
 
   val vkitmProducer = TestUtils.buildProducer(vkitmServer.getBrokerList)
   val vkitmConsumer = TestUtils.buildConsumer(vkitmServer.getBrokerList)
+  val kafkaAdminClient = TestUtils.buildAdminClient(kafkaCluster.getBrokerList)
 
   var currentTopic: String = null
 
@@ -141,28 +145,48 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
     }
   }
 
-  "An admin" when {
+  "A VKitM admin client" when {
+
     "listing topics" should {
       "expect that there are the same topics in VKitM and ZK" in {
+        vkitmAdminClient.createTopics(Seq(new NewTopic(currentTopic, 1, 1)).asJava).all.get
+
         val topics = kafkaCluster.listTopics
+
         topics.isEmpty should be(false)
         topics.size should be(vkitmServer.getServer.metadataCache.getAllTopics.size)
         topics.foreach { topic =>
           vkitmServer.getServer.metadataCache.contains(topic) should be(true)
         }
       }
+
+      "expect that the topics are the same as the returned by the Kafka admin client" in {
+        vkitmAdminClient.createTopics(Seq(new NewTopic(currentTopic, 1, 1)).asJava).all.get
+
+        val kafkaTopics = kafkaAdminClient.listTopics.listings.get.asScala.map(tl => tl.name -> tl.isInternal).toMap
+        val vkitmTopics = vkitmAdminClient.listTopics.listings.get.asScala.map(tl => tl.name -> tl.isInternal).toMap
+
+        vkitmTopics.isEmpty should be(false)
+        kafkaTopics.isEmpty should be(false)
+        vkitmTopics.size should be (kafkaTopics.size)
+
+        vkitmTopics.foreach(tl => {
+          kafkaTopics.get(tl._1).isEmpty should be(false)
+          kafkaTopics.get(tl._1).get should be(tl._2)
+        })
+      }
     }
 
     "creating topics" should {
       "expect the metadata in VKitM server is updated" in {
         val numPartitions = 25
-        kafkaCluster.existTopic(currentTopic) should be(false)
-        kafkaCluster.createTopic(currentTopic, numPartitions)
-        kafkaCluster.existTopic(currentTopic) should be(true)
-        for (i <- 1 until 5 if !vkitmServer.getServer.metadataCache.contains(currentTopic)) {
-          //must sleep to wait the listener receives the update
-          Thread.sleep(200)
-        }
+
+        vkitmAdminClient.listTopics.names.get.contains(currentTopic) should be(false)
+        val created = vkitmAdminClient.createTopics(Seq(new NewTopic(currentTopic, numPartitions, 1)).asJava).all.get
+        created should be(null)
+
+        vkitmAdminClient.listTopics.names.get.contains(currentTopic) should be(true)
+        kafkaAdminClient.listTopics.names.get.contains(currentTopic) should be(true)
         vkitmServer.getServer.metadataCache.contains(currentTopic) should be(true)
 
         val metadata: Seq[MetadataResponse.TopicMetadata] = vkitmServer.getServer.metadataCache.getTopicMetadata(Set(currentTopic), SecurityProtocol.PLAINTEXT)
@@ -182,20 +206,47 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
       }
     }
 
+    "describing topics" should {
+      "expect the same description as returned from the Kafka admin client" in {
+        val numPartitions = 25
+        vkitmAdminClient.createTopics(Seq(new NewTopic(currentTopic, numPartitions, 1)).asJava)
+        vkitmAdminClient.listTopics.names.get.contains(currentTopic) should be(true)
+        kafkaAdminClient.listTopics.names.get.contains(currentTopic) should be(true)
+
+        val vkitmTopicDescription = vkitmAdminClient.describeTopics(Seq(currentTopic).asJava).all.get.asScala
+        val kafkaTopicDescription = kafkaAdminClient.describeTopics(Seq(currentTopic).asJava).all.get.asScala
+
+        vkitmTopicDescription.isEmpty should be(false)
+        kafkaTopicDescription.isEmpty should be(false)
+
+        vkitmTopicDescription.foreach(record => {
+          val vkitmTd = record._2
+          val kafkaTd = kafkaTopicDescription.get(record._1).get
+
+          kafkaTd shouldNot be(null)
+          vkitmTd.isInternal should be(kafkaTd.isInternal)
+          vkitmTd.name should be(kafkaTd.name)
+          vkitmTd.partitions.isEmpty should be(false)
+          kafkaTd.partitions.isEmpty should be(false)
+        })
+      }
+    }
+
     "deleting topics" should {
       "expect the metadata in VKitM server is updated" in {
-        val topics = kafkaCluster.listTopics
+        vkitmAdminClient.createTopics(Seq(new NewTopic(currentTopic, 1, 1)).asJava)
+        val topics = vkitmAdminClient.listTopics.names.get
+
         topics.isEmpty should be(false)
-        topics.filter(!Topic.isInternal(_)).foreach { topic => {
+        topics.asScala.filter(!Topic.isInternal(_)).foreach(topic => {
+
           vkitmServer.getServer.metadataCache.contains(topic) should be(true)
-          kafkaCluster.deleteTopic(topic)
-          for (i <- 1 until 5 if vkitmServer.getServer.metadataCache.contains(topic)) {
-            //must sleep to wait the listener receives the update
-            Thread.sleep(200)
-          }
-          vkitmServer.getServer.metadataCache.contains(topic) should be(false)
+
+          vkitmAdminClient.deleteTopics(Seq(topic).asJava)
+
+          vkitmAdminClient.listTopics.names.get.contains(topic) should be(false)
         }
-        }
+        )
       }
     }
   }
@@ -246,6 +297,7 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
   }
 
   override def afterAll {
+    vkitmAdminClient.close
     vkitmServer.shutdown
     kafkaCluster.shutdown
     zkServer.shutdown

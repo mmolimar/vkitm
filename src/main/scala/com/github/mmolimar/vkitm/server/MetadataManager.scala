@@ -19,7 +19,7 @@ import scala.collection.{JavaConversions, Seq, Set, mutable}
 class MetadataManager(vkId: Int,
                       zkUtils: ZkUtils,
                       private val virtualBrokers: Seq[Broker],
-                      private val metadataCache: FakedMetadataCache) extends Logging {
+                      val metadataCache: FakedMetadataCache) extends Logging {
 
   private val hasStarted = new AtomicBoolean(false)
   private val topicChangeListener = new TopicChangeListener()
@@ -43,10 +43,13 @@ class MetadataManager(vkId: Int,
     info("Stopped Metadata Manager.")
   }
 
+  private[server] def refreshTopics(topics: Seq[String] = zkUtils.getAllTopics): Unit = {
+    metadataCache.update(createTopicsByPartitionStateInfo(topics))
+  }
+
   private def initialize() {
     //set current existing topics
-    val topics = zkUtils.getAllTopics()
-    metadataCache.update(createTopicsByPartitionStateInfo(topics))
+    refreshTopics()
 
     //set current alive brokers
     val aliveBrokers = zkUtils.getAllBrokersInCluster().map { broker =>

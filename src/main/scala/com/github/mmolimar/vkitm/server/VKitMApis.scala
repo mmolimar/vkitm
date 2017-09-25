@@ -36,7 +36,7 @@ import scala.util.{Failure, Success}
 class VKitMApis(val requestChannel: RequestChannel,
                 val zkUtils: ZkUtils,
                 val config: VKitMConfig,
-                val metadataCache: FakedMetadataCache,
+                val metadataManager: MetadataManager,
                 val metrics: Metrics,
                 val quotas: QuotaManagers,
                 val clusterId: String,
@@ -45,6 +45,7 @@ class VKitMApis(val requestChannel: RequestChannel,
   private val producerCache = Cache.forProducers()
   private val clientCache = Cache.forClients()
   private val consumerConfig = KafkaConfig.fromProps(config.consumerProps)
+  private val metadataCache = metadataManager.metadataCache
 
   this.logIdent = "[VKitMApi-%d] ".format(config.serverConfig.brokerId)
 
@@ -321,6 +322,7 @@ class VKitMApis(val requestChannel: RequestChannel,
 
     sendNetworkClientRequest(request.header, request,
       fakedCreateTopicsRequest, ncr, request.connectionId, request.header.correlationId, clientResponse => {
+        metadataManager.refreshTopics()
         clientResponse.responseBody.asInstanceOf[CreateTopicsResponse]
       })
   }
@@ -332,6 +334,8 @@ class VKitMApis(val requestChannel: RequestChannel,
 
     sendNetworkClientRequest(request.header, request,
       deleteTopicRequest, ncr, request.connectionId, request.header.correlationId, clientResponse => {
+        metadataManager.refreshTopics()
+        metadataCache.removeTopics(deleteTopicRequest.topics.asScala)
         clientResponse.responseBody.asInstanceOf[DeleteTopicsResponse]
       })
 
@@ -520,7 +524,7 @@ class VKitMApis(val requestChannel: RequestChannel,
     request.recordNetworkThreadTimeCallback = Some(recordNetworkThreadTimeNanos)
 
     quotas.request.recordExempt(nanosToPercentage(request.requestThreadTimeNanos))
-    sendResponseCallback
+    sendResponseCallback()
   }
 
   private def sendResponse(request: RequestChannel.Request, response: AbstractResponse) {

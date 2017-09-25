@@ -43,7 +43,7 @@ class VKitMServer(val config: VKitMConfig, time: Time = Time.SYSTEM, threadNameP
   var quotaManagers: QuotaFactory.QuotaManagers = null
   var metadataCache: FakedMetadataCache = null
   var requestHandlerPool: VKitMRequestHandlerPool = null
-  var fakedMetadataManager: MetadataManager = null
+  var metadataManager: MetadataManager = null
   var credentialProvider: CredentialProvider = null
 
   val vkitmScheduler = new KafkaScheduler(config.serverConfig.backgroundThreads, "vkitm-scheduler-")
@@ -87,10 +87,10 @@ class VKitMServer(val config: VKitMConfig, time: Time = Time.SYSTEM, threadNameP
       socketServer.startup()
 
       val virtualBroker = new Broker(VKitMServer.DEFAULT_VKITM_BROKER_ID, config.serverConfig.advertisedListeners, config.serverConfig.rack)
-      fakedMetadataManager = new MetadataManager(config.serverConfig.brokerId, zkUtils, Seq(virtualBroker), metadataCache)
-      fakedMetadataManager.startup()
+      metadataManager = new MetadataManager(config.serverConfig.brokerId, zkUtils, Seq(virtualBroker), metadataCache)
+      metadataManager.startup()
 
-      apis = new VKitMApis(socketServer.requestChannel, zkUtils, config, metadataCache, metrics, quotaManagers, clusterId, time)
+      apis = new VKitMApis(socketServer.requestChannel, zkUtils, config, metadataManager, metrics, quotaManagers, clusterId, time)
 
       requestHandlerPool = new VKitMRequestHandlerPool(config.serverConfig.brokerId,
         socketServer.requestChannel, apis, time, config.serverConfig.numIoThreads)
@@ -148,8 +148,8 @@ class VKitMServer(val config: VKitMConfig, time: Time = Time.SYSTEM, threadNameP
         CoreUtils.swallow(vkitmScheduler.shutdown())
         if (apis != null)
           CoreUtils.swallow(apis.close())
-        if (fakedMetadataManager != null)
-          CoreUtils.swallow(fakedMetadataManager.shutdown())
+        if (metadataManager != null)
+          CoreUtils.swallow(metadataManager.shutdown())
         if (zkUtils != null)
           CoreUtils.swallow(zkUtils.close())
         if (metrics != null)

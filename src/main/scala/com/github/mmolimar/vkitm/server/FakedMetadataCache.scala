@@ -72,7 +72,7 @@ private[server] class FakedMetadataCache(vkId: Int) extends Logging {
     }
   }
 
-  def update(updatedCache: mutable.Map[String, mutable.Map[Int, PartitionStateInfo]]) = {
+  def update(updatedCache: Map[String, mutable.Map[Int, PartitionStateInfo]]) = {
     inWriteLock(vkMetadataLock) {
       cache.clear()
       updatedCache.foreach(t => cache.put(t._1, t._2))

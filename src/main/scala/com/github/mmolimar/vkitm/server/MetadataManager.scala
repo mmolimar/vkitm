@@ -161,7 +161,7 @@ class MetadataManager(vkId: Int,
     }
   }
 
-  private def createTopicsByPartitionStateInfo(topics: Seq[String]): mutable.Map[String, mutable.Map[Int, PartitionStateInfo]] = {
+  private def createTopicsByPartitionStateInfo(topics: Seq[String]): Map[String, mutable.Map[Int, PartitionStateInfo]] = {
     val topicAndPartitions = zkUtils.getPartitionsForTopics(topics).flatMap { pft =>
       pft._2.map(TopicAndPartition(pft._1, _))
     }.toSet
@@ -169,10 +169,7 @@ class MetadataManager(vkId: Int,
     val leaderAndIsrInfo: mutable.Map[TopicAndPartition, LeaderIsrAndControllerEpoch] =
       zkUtils.getPartitionLeaderAndIsrForTopics(topicAndPartitions)
 
-    leaderAndIsrInfo.map { info =>
-      (info._1.topic, mutable.Map[Int, PartitionStateInfo](info._1.partition -> getPartitionStateInfo(info._2)))
-    }
-
+    leaderAndIsrInfo.groupBy(_._1.topic).mapValues(_.map(info => (info._1.partition -> getPartitionStateInfo(info._2))))
   }
 
   private def getPartitionStateInfo(leaderIsrAndControllerEpoch: LeaderIsrAndControllerEpoch): PartitionStateInfo = {

@@ -1,11 +1,10 @@
 package com.github.mmolimar.vkitm.server
 
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 
 import com.github.mmolimar.vkitm.embedded.{EmbeddedKafkaCluster, EmbeddedVKitM, EmbeddedZookeeperServer}
 import com.github.mmolimar.vkitm.utils.TestUtils
-import org.apache.kafka.clients.admin.{CreateTopicsOptions, NewTopic}
+import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.clients.consumer.{ConsumerRebalanceListener, ConsumerRecords, KafkaConsumer}
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.internals.Topic
@@ -29,11 +28,11 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
 
   val kafkaProducer = TestUtils.buildProducer(kafkaCluster.getBrokerList)
   val kafkaConsumer = TestUtils.buildConsumer(kafkaCluster.getBrokerList)
-  val vkitmAdminClient = TestUtils.buildAdminClient(vkitmServer.getBrokerList)
+  val kafkaAdminClient = TestUtils.buildAdminClient(kafkaCluster.getBrokerList)
 
   val vkitmProducer = TestUtils.buildProducer(vkitmServer.getBrokerList)
   val vkitmConsumer = TestUtils.buildConsumer(vkitmServer.getBrokerList)
-  val kafkaAdminClient = TestUtils.buildAdminClient(kafkaCluster.getBrokerList)
+  val vkitmAdminClient = TestUtils.buildAdminClient(vkitmServer.getBrokerList)
 
   var currentTopic: String = null
 
@@ -168,7 +167,7 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
 
         vkitmTopics.isEmpty should be(false)
         kafkaTopics.isEmpty should be(false)
-        vkitmTopics.size should be (kafkaTopics.size)
+        vkitmTopics.size should be(kafkaTopics.size)
 
         vkitmTopics.foreach(tl => {
           kafkaTopics.get(tl._1).isEmpty should be(false)
@@ -195,7 +194,7 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
           tm.isInternal should be(false)
           tm.error.code should be(Errors.NONE.code)
 
-          tm.partitionMetadata.size should be(1)
+          tm.partitionMetadata.size should be(numPartitions)
           tm.partitionMetadata.asScala.foreach { pm =>
             validateVirtualNode(pm.leader)
             pm.error.code should be(Errors.NONE.code)
@@ -226,8 +225,13 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
           kafkaTd shouldNot be(null)
           vkitmTd.isInternal should be(kafkaTd.isInternal)
           vkitmTd.name should be(kafkaTd.name)
-          vkitmTd.partitions.isEmpty should be(false)
-          kafkaTd.partitions.isEmpty should be(false)
+          vkitmTd.partitions.size should be(numPartitions)
+          kafkaTd.partitions.size should be(numPartitions)
+          vkitmTd.partitions.asScala.foreach(pi => {
+            validateVirtualNode(pi.leader)
+            pi.isr.asScala.foreach(validateVirtualNode(_))
+            pi.replicas.asScala.foreach(validateVirtualNode(_))
+          })
         })
       }
     }
@@ -242,8 +246,9 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
 
           vkitmServer.getServer.metadataCache.contains(topic) should be(true)
 
-          vkitmAdminClient.deleteTopics(Seq(topic).asJava)
+          vkitmAdminClient.deleteTopics(Seq(topic).asJava).all.get
 
+          vkitmServer.getServer.metadataCache.contains(topic) should be(false)
           vkitmAdminClient.listTopics.names.get.contains(topic) should be(false)
         }
         )
@@ -261,13 +266,15 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
     val kafkaTopicPartitions = kafkaConsumer.partitionsFor(topic).asScala
 
     vkitmTopicPartitions.size should be(kafkaTopicPartitions.size)
-    for ((tp, i) <- vkitmTopicPartitions.zipWithIndex) {
-      tp.partition should be(kafkaTopicPartitions(i).partition)
-      tp.topic should be equals (kafkaTopicPartitions(i).topic)
+    for (vkitmTp <- vkitmTopicPartitions) {
+      kafkaTopicPartitions.map(kafkaTp => {
+        vkitmTp.topic should be equals (kafkaTp.topic)
+        kafkaTp.partition
+      }).contains(vkitmTp.partition) should be(true)
 
-      validateVirtualNode(tp.leader())
-      tp.inSyncReplicas.foreach(validateVirtualNode(_))
-      tp.replicas.foreach(validateVirtualNode(_))
+      validateVirtualNode(vkitmTp.leader())
+      vkitmTp.inSyncReplicas.foreach(validateVirtualNode(_))
+      vkitmTp.replicas.foreach(validateVirtualNode(_))
     }
   }
 
@@ -297,7 +304,15 @@ class VKitMServerTest extends WordSpec with BeforeAndAfterAll with BeforeAndAfte
   }
 
   override def afterAll {
+    kafkaAdminClient.close
     vkitmAdminClient.close
+
+    kafkaProducer.close
+    vkitmProducer.close
+
+    kafkaConsumer.close
+    vkitmConsumer.close
+
     vkitmServer.shutdown
     kafkaCluster.shutdown
     zkServer.shutdown

@@ -34,6 +34,7 @@ class EmbeddedKafkaCluster(zkConnection: String,
       properties.setProperty(KafkaConfig.LogDirProp, logDir.getAbsolutePath)
       properties.setProperty(KafkaConfig.NumPartitionsProp, 1.toString)
       properties.setProperty(KafkaConfig.AutoCreateTopicsEnableProp, true.toString)
+      properties.setProperty(KafkaConfig.DeleteTopicEnableProp, true.toString)
       properties.setProperty(KafkaConfig.LogFlushIntervalMessagesProp, 1.toString)
       properties.setProperty(KafkaConfig.OffsetsTopicReplicationFactorProp, 1.toString)
 

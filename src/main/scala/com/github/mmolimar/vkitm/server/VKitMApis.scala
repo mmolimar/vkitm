@@ -57,7 +57,9 @@ class VKitMApis(val requestChannel: RequestChannel,
         //by now, some ApiKeys are supported
         case ApiKeys.PRODUCE => handleProducerRequest(request)
         case ApiKeys.FETCH => handleFetchRequest(request)
+        case ApiKeys.LIST_OFFSETS => handleListOffsetRequest(request)
         case ApiKeys.METADATA => handleTopicMetadataRequest(request)
+        case ApiKeys.UPDATE_METADATA_KEY => handleUpdateMetadataRequest(request)
         case ApiKeys.FIND_COORDINATOR => handleFindCoordinatorRequest(request)
         case ApiKeys.JOIN_GROUP => handleJoinGroupRequest(request)
         case ApiKeys.HEARTBEAT => handleHeartbeatRequest(request)
@@ -191,6 +193,24 @@ class VKitMApis(val requestChannel: RequestChannel,
     sendNetworkClientRequest(request.header, request,
       fetchRequest, ncr, request.connectionId, request.header.correlationId,
       clientResponse => clientResponse.responseBody.asInstanceOf[FetchResponse])
+
+  }
+
+  def handleUpdateMetadataRequest(request: RequestChannel.Request) {
+
+    //always fine, the metadata is updated when starting the app and by the zkNode change listeners
+    sendResponseMaybeThrottle(request, requestThrottleMs => new UpdateMetadataResponse(Errors.NONE))
+
+  }
+
+  def handleListOffsetRequest(request: RequestChannel.Request) {
+
+    val offsetRequest = request.body[ListOffsetRequest]
+    val ncr = NetworkClientRequest(request.header.clientId + "-" + request.requestId)(metadataCache.getMetadataUpdater, consumerConfig, metrics)
+
+    sendNetworkClientRequest(request.header, request,
+      offsetRequest, ncr, request.connectionId, request.header.correlationId,
+      clientResponse => clientResponse.responseBody.asInstanceOf[ListOffsetResponse])
 
   }
 
